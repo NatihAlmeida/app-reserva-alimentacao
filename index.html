@@ -7,13 +7,26 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <p>Insira suas credenciais de acesso:</p>
-    <form action="">
+
+    <div class="container">
+    <form id="tela-login" method="get">
+        <fieldset>
+        <p>Insira suas credenciais:</p>
         <label for="e-mail">E-mail:</label>
         <input type="e-mail" id="e-mail" placeholder="usuário" required>
+
+        <br><br>
+
         <label for="senha">Senha:</label>
         <input type="senha" id="senha" placeholder="senha" required>
+
+        <br><br>
+
         <button type="submit">Entrar</button>
+        </fieldset>
     </form>
+    </div>
+
+    <script src="js/aplicativo.js"></script>
 </body>
 </html>
