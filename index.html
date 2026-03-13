@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+    <title>Cantina do Neném</title>
+</head>
+<body>
+    <div class="sidebar">
+        <h1 class="logo"> Cantina do Neném</h1>
+
+
+        <div class="sidebar-menus">
+            <a href="#"><ion-icon name="storefront-outline"></ion-icon>Home</a>
+            <a href="#"><ion-icon name="receipt-outline"></ion-icon>Reservar</a>
+            <a href="#"><ion-icon name="wallet-outline"></ion-icon>Wallet</a>
+            <a href="#"><ion-icon name="notifications-outline"></ion-icon>Notifications</a>
+            <a href="#"><ion-icon name="chatbubbles-outline"></ion-icon>Contacts</a>
+            <a href="#"><ion-icon name="settings-outline"></ion-icon>Settings</a>
+        </div>
+        <div class="sidebar-logout">
+            <a href="#"><ion-icon name="log-out-outline"></ion-icon>LogOut</a>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="main-navbar">
+            <!-- para o mobile -->
+            <ion-icon class="menu-toggle" name="menu-outline"></ion-icon>
+            <div class="search">
+                <input type="text" placeholder="Oque deseja comer?">
+                <button class="search-btn">Search</button>
+            </div>
+            <div class="profile">
+                <a class="cart" href="#"><ion-icon name="cart-outline"></ion-icon></a>
+                <a class="user" href="#"><ion-icon name="person-outline"></ion-icon></a>
+            </div>
+        </div>
+    </div>
+</body>
+<script src="script.js"></script>
+<script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+<script nomodule src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>
+</html>
