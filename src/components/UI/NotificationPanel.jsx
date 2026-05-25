@@ -1,6 +1,6 @@
-import React, { useContext } from 'react';
+import { useContext } from 'react';
 import { NotificationContext } from '../../context/NotificationContext';
-import { FaCheck, FaTrash, FaBell } from 'react-icons/fa';
+import { FaTrash, FaBell } from 'react-icons/fa';
 import { formatDistanceToNow } from 'date-fns';
 import ptBR from 'date-fns/locale/pt-BR';
 

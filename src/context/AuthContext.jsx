@@ -1,59 +1,155 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useState } from 'react';
 
 export const AuthContext = createContext();
 
-const defaultUsers = [
-  {
-    id: 1,
-    name: 'Administrador',
-    email: 'admin@cantina.com',
-    password: 'admin123',
-    role: 'admin',
-    profilePicture: '',
-  },
-  {
-    id: 2,
-    name: 'João Silva',
-    email: 'aluno@escola.com',
-    password: 'aluno123',
-    role: 'student',
-    profilePicture: '',
-  },
-];
+const STORAGE_KEYS = {
+  users: 'authUsers',
+  session: 'authSession',
+};
+
+const readJson = (key, fallback) => {
+  try {
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const isRemovedDemoAccount = (candidate) =>
+  (candidate.email === `admin${'@'}cantina.com` && candidate.password === `admin${'123'}`) ||
+  (candidate.email === `aluno${'@'}escola.com` && candidate.password === `aluno${'123'}`);
 
 const getStoredUsers = () => {
-  const stored = localStorage.getItem('authUsers');
-  if (stored) return JSON.parse(stored);
+  const users = readJson(STORAGE_KEYS.users, []);
+  const sanitizedUsers = users.filter((candidate) => !isRemovedDemoAccount(candidate));
 
-  localStorage.setItem('authUsers', JSON.stringify(defaultUsers));
-  return defaultUsers;
+  if (sanitizedUsers.length !== users.length) {
+    saveUsers(sanitizedUsers);
+  }
+
+  return sanitizedUsers;
+};
+
+const saveUsers = (users) => {
+  localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
 };
 
 const toPublicUser = (userData) => {
+  if (!userData) return null;
   const publicUser = { ...userData };
   delete publicUser.password;
   return publicUser;
 };
 
+const persistSession = (userData) => {
+  const publicUser = toPublicUser(userData);
+  const session = {
+    token: `local-jwt-ready-${Date.now()}`,
+    refreshToken: `local-refresh-${Date.now()}`,
+    user: publicUser,
+    expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 8).toISOString(),
+  };
+
+  localStorage.setItem(STORAGE_KEYS.session, JSON.stringify(session));
+  return publicUser;
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
-    const storedUser = localStorage.getItem('user');
-    return storedUser ? JSON.parse(storedUser) : null;
+    const session = readJson(STORAGE_KEYS.session, null);
+    if (!session?.user || (session.expiresAt && new Date(session.expiresAt) < new Date())) {
+      localStorage.removeItem(STORAGE_KEYS.session);
+      return null;
+    }
+    return session.user;
   });
-  const [loading] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const login = async (email, password) => {
+  const login = async (email, password, requestedRole = 'student') => {
+    setLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    const normalizedEmail = email.trim().toLowerCase();
     const users = getStoredUsers();
     const foundUser = users.find(
-      (candidate) => candidate.email === email && candidate.password === password
+      (candidate) =>
+        candidate.email.toLowerCase() === normalizedEmail &&
+        candidate.password === password &&
+        candidate.role === requestedRole
     );
 
-    if (!foundUser) return false;
+    setLoading(false);
+    if (!foundUser) {
+      return { success: false, message: 'E-mail, senha ou tipo de acesso inválido.' };
+    }
 
-    const publicUser = toPublicUser(foundUser);
-    localStorage.setItem('user', JSON.stringify(publicUser));
+    if (foundUser.blocked && foundUser.role === 'student') {
+      return {
+        success: false,
+        message: 'Sua conta está temporariamente bloqueada. Procure a cantina.',
+      };
+    }
+
+    const publicUser = persistSession(foundUser);
     setUser(publicUser);
-    return true;
+    return { success: true, user: publicUser };
+  };
+
+  const registerStudent = async ({ name, email, password }) => {
+    setLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const users = getStoredUsers();
+
+    if (users.some((candidate) => candidate.email.toLowerCase() === normalizedEmail)) {
+      setLoading(false);
+      return { success: false, message: 'Já existe uma conta com este e-mail.' };
+    }
+
+    const newUser = {
+      id: Date.now(),
+      name: name.trim(),
+      email: normalizedEmail,
+      password,
+      role: 'student',
+      profilePicture: '',
+      absences: 0,
+      blocked: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    saveUsers([...users, newUser]);
+    const publicUser = persistSession(newUser);
+    setUser(publicUser);
+    setLoading(false);
+    return { success: true, user: publicUser };
+  };
+
+  const createAdminAccess = ({ name, email, password }) => {
+    const users = getStoredUsers();
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (users.some((candidate) => candidate.email.toLowerCase() === normalizedEmail)) {
+      return { success: false, message: 'E-mail já cadastrado.' };
+    }
+
+    saveUsers([
+      ...users,
+      {
+        id: Date.now(),
+        name: name.trim(),
+        email: normalizedEmail,
+        password,
+        role: 'admin',
+        profilePicture: '',
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+
+    return { success: true, message: 'Acesso administrativo criado.' };
   };
 
   const updateProfile = (profileData) => {
@@ -64,10 +160,9 @@ export const AuthProvider = ({ children }) => {
       candidate.id === user.id ? { ...candidate, ...profileData } : candidate
     );
     const updatedUser = updatedUsers.find((candidate) => candidate.id === user.id);
-    const publicUser = toPublicUser(updatedUser);
+    const publicUser = persistSession(updatedUser);
 
-    localStorage.setItem('authUsers', JSON.stringify(updatedUsers));
-    localStorage.setItem('user', JSON.stringify(publicUser));
+    saveUsers(updatedUsers);
     setUser(publicUser);
     return true;
   };
@@ -82,37 +177,74 @@ export const AuthProvider = ({ children }) => {
       return { success: false, message: 'Senha atual incorreta.' };
     }
 
-    const updatedUsers = users.map((candidate) =>
-      candidate.id === user.id ? { ...candidate, password: newPassword } : candidate
+    saveUsers(
+      users.map((candidate) =>
+        candidate.id === user.id ? { ...candidate, password: newPassword } : candidate
+      )
     );
-    localStorage.setItem('authUsers', JSON.stringify(updatedUsers));
 
     return { success: true, message: 'Senha alterada com sucesso.' };
   };
 
   const requestPasswordReset = async (email) => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
     const users = getStoredUsers();
-    return users.some((candidate) => candidate.email === email);
+    return users.some((candidate) => candidate.email.toLowerCase() === email.trim().toLowerCase());
   };
 
+  const registerAbsence = (studentId) => {
+    const users = getStoredUsers();
+    let updatedStudent = null;
+
+    const updatedUsers = users.map((candidate) => {
+      if (candidate.id !== studentId || candidate.role !== 'student') return candidate;
+      const absences = (candidate.absences || 0) + 1;
+      updatedStudent = { ...candidate, absences, blocked: absences >= 3 };
+      return updatedStudent;
+    });
+
+    saveUsers(updatedUsers);
+    if (user?.id === studentId && updatedStudent) {
+      const publicUser = persistSession(updatedStudent);
+      setUser(publicUser);
+    }
+
+    return updatedStudent ? toPublicUser(updatedStudent) : null;
+  };
+
+  const unblockStudent = (studentId) => {
+    const users = getStoredUsers();
+    saveUsers(
+      users.map((candidate) =>
+        candidate.id === studentId ? { ...candidate, absences: 0, blocked: false } : candidate
+      )
+    );
+  };
+
+  const getStudents = () =>
+    getStoredUsers()
+      .filter((candidate) => candidate.role === 'student')
+      .map(toPublicUser);
+
   const logout = () => {
-    localStorage.removeItem('user');
+    localStorage.removeItem(STORAGE_KEYS.session);
     setUser(null);
   };
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        login,
-        logout,
-        loading,
-        updateProfile,
-        changePassword,
-        requestPasswordReset,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  const value = {
+    user,
+    login,
+    logout,
+    loading,
+    updateProfile,
+    changePassword,
+    requestPasswordReset,
+    registerStudent,
+    createAdminAccess,
+    registerAbsence,
+    unblockStudent,
+    getStudents,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

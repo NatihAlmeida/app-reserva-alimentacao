@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react';
+import { useContext, useState } from 'react';
 import { ProductContext } from '../../context/ProductContext';
 import { NotificationContext } from '../../context/NotificationContext';
 import { FaChevronDown, FaChevronUp, FaClock, FaCheckCircle, FaTimesCircle } from 'react-icons/fa';

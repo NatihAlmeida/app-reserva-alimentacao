@@ -1,26 +1,12 @@
+const tagClass = {
+  'CONTÉM GLÚTEN': 'tag-gluten',
+  'CONTÉM LACTOSE': 'tag-lactose',
+  'SEM GLÚTEN': 'tag-sem-gluten',
+  'SEM LACTOSE': 'tag-sem-lactose',
+  'SEM AÇÚCAR': 'tag-sem-acucar',
+};
+
 export default function StudentProductCard({ product, onOpenDetails }) {
-  const renderTags = () => {
-    const tags = [];
-
-    if (product.dietary?.includes('CONTÉM GLÚTEN')) {
-      tags.push(<span key="gluten" className="tag-gluten">CONTÉM GLÚTEN</span>);
-    }
-    if (product.dietary?.includes('CONTÉM LACTOSE')) {
-      tags.push(<span key="lactose" className="tag-lactose">CONTÉM LACTOSE</span>);
-    }
-    if (product.dietary?.includes('SEM GLÚTEN')) {
-      tags.push(<span key="semgluten" className="tag-sem-gluten">SEM GLÚTEN</span>);
-    }
-    if (product.dietary?.includes('SEM LACTOSE')) {
-      tags.push(<span key="semlactose" className="tag-sem-lactose">SEM LACTOSE</span>);
-    }
-    if (product.dietary?.includes('SEM AÇÚCAR')) {
-      tags.push(<span key="semacucar" className="tag-sem-acucar">SEM AÇÚCAR</span>);
-    }
-
-    return tags;
-  };
-
   return (
     <button
       type="button"
@@ -30,7 +16,7 @@ export default function StudentProductCard({ product, onOpenDetails }) {
       <img
         src={product.image}
         alt={product.name}
-        className="h-40 w-40 rounded-sm object-cover transition duration-300 group-hover:scale-[1.02] sm:h-44 sm:w-44"
+        className="h-40 w-40 rounded-lg object-cover transition duration-300 group-hover:scale-[1.02] sm:h-44 sm:w-44"
       />
 
       <div className="mt-4 w-full">
@@ -40,7 +26,11 @@ export default function StudentProductCard({ product, onOpenDetails }) {
         </p>
 
         <div className="mt-4 flex min-h-7 flex-wrap justify-center gap-2">
-          {renderTags()}
+          {product.dietary?.map((tag) => (
+            <span key={tag} className={tagClass[tag] || 'tag-sem-gluten'}>
+              {tag}
+            </span>
+          ))}
         </div>
       </div>
     </button>

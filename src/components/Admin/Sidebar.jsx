@@ -1,7 +1,29 @@
-import React, { useContext } from 'react';
+import { useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  FaBell,
+  FaBox,
+  FaChartBar,
+  FaCog,
+  FaHome,
+  FaPlus,
+  FaSignOutAlt,
+  FaStore,
+  FaUserGraduate,
+  FaUtensils,
+} from 'react-icons/fa';
 import { AuthContext } from '../../context/AuthContext';
-import { FaUtensils, FaBox, FaPlus, FaChartBar, FaSignOutAlt, FaCog } from 'react-icons/fa';
+
+const adminMenuItems = [
+  { id: 'dashboard', label: 'Dashboard', icon: <FaHome /> },
+  { id: 'products', label: 'Produtos', icon: <FaUtensils /> },
+  { id: 'newProduct', label: 'Novo Produto', icon: <FaPlus /> },
+  { id: 'reservations', label: 'Reservas', icon: <FaBox /> },
+  { id: 'students', label: 'Alunos', icon: <FaUserGraduate /> },
+  { id: 'notifications', label: 'Notificações', icon: <FaBell /> },
+  { id: 'reports', label: 'Relatórios', icon: <FaChartBar /> },
+  { id: 'settings', label: 'Configurações', icon: <FaCog /> },
+];
 
 export default function Sidebar({ activeTab, setActiveTab }) {
   const { logout } = useContext(AuthContext);
@@ -9,56 +31,79 @@ export default function Sidebar({ activeTab, setActiveTab }) {
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    navigate('/login', { replace: true });
   };
 
-  const menuItems = [
-    { id: 'products', label: 'Produtos', icon: <FaUtensils /> },
-    { id: 'newProduct', label: 'Novo Produto', icon: <FaPlus /> },
-    { id: 'reservations', label: 'Reservas', icon: <FaBox /> },
-    { id: 'stats', label: 'Estatísticas', icon: <FaChartBar /> },
-  ];
-
   return (
-    <div className="w-64 bg-white shadow-lg flex flex-col">
-      <div className="p-6 border-b">
-        <h1 className="text-2xl font-bold text-primary-600">Cantina</h1>
-        <p className="text-sm text-gray-500">Admin Panel</p>
+    <aside className="sticky top-0 hidden h-screen w-72 shrink-0 flex-col border-r border-gray-200 bg-white shadow-sm lg:flex">
+      <div className="border-b p-6">
+        <div className="flex items-center gap-3">
+          <div className="grid h-11 w-11 place-items-center rounded-2xl bg-primary-700 text-white">
+            <FaStore />
+          </div>
+          <div>
+            <h1 className="text-2xl font-extrabold text-primary-700">Cantina</h1>
+            <p className="text-sm text-gray-500">Admin Panel</p>
+          </div>
+        </div>
       </div>
-      
-      <nav className="flex-1 p-4">
-        {menuItems.map(item => (
+
+      <nav className="flex-1 space-y-1 overflow-y-auto p-4">
+        {adminMenuItems.map((item) => (
           <button
             key={item.id}
             onClick={() => setActiveTab(item.id)}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl mb-2 transition-all ${
+            className={`flex h-12 w-full items-center gap-3 rounded-xl px-4 text-left text-sm font-bold transition ${
               activeTab === item.id
-                ? 'bg-primary-500 text-white shadow-md'
-                : 'text-gray-700 hover:bg-gray-100'
+                ? 'bg-primary-700 text-white shadow-md shadow-primary-900/10'
+                : 'text-gray-600 hover:bg-primary-50 hover:text-primary-800'
             }`}
           >
-            {item.icon}
+            <span className="text-base">{item.icon}</span>
             <span>{item.label}</span>
           </button>
         ))}
       </nav>
-      
-      <div className="p-4 border-t">
-        <button
-          onClick={() => navigate('/configuracoes')}
-          className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-700 hover:bg-gray-100 mb-2 transition-all"
-        >
-          <FaCog />
-          <span>Configurações</span>
-        </button>
+
+      <div className="border-t p-4">
         <button
           onClick={handleLogout}
-          className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-red-600 hover:bg-red-50 transition-all"
+          className="flex h-12 w-full items-center gap-3 rounded-xl px-4 text-sm font-bold text-red-600 transition hover:bg-red-50"
         >
           <FaSignOutAlt />
           <span>Sair</span>
         </button>
       </div>
+    </aside>
+  );
+}
+
+export function AdminMobileNav({ activeTab, setActiveTab }) {
+  return (
+    <div className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 px-3 py-3 shadow-sm backdrop-blur lg:hidden">
+      <div className="mb-3 flex items-center justify-between px-1">
+        <div>
+          <p className="text-xs font-bold uppercase text-primary-600">Admin Panel</p>
+          <h1 className="text-lg font-extrabold text-gray-900">Cantina</h1>
+        </div>
+        <FaStore className="text-2xl text-primary-700" />
+      </div>
+      <nav className="flex gap-2 overflow-x-auto pb-1">
+        {adminMenuItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setActiveTab(item.id)}
+            className={`flex h-11 shrink-0 items-center gap-2 rounded-full px-4 text-sm font-bold transition ${
+              activeTab === item.id
+                ? 'bg-primary-700 text-white shadow-md'
+                : 'bg-gray-100 text-gray-600'
+            }`}
+          >
+            {item.icon}
+            {item.label}
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }

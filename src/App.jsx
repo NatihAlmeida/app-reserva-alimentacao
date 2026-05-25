@@ -3,6 +3,8 @@ import { AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { ProductProvider } from './context/ProductContext';
 import Login from './pages/Login';
+import Register from './pages/Register';
+import AdminSetup from './pages/AdminSetup';
 import ForgotPassword from './pages/ForgotPassword';
 import Settings from './pages/Settings';
 import MinhasReservas from './pages/MinhasReservas';
@@ -19,11 +21,13 @@ function App() {
             <Routes>
               <Route path="/" element={<Navigate to="/login" />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/cadastro" element={<Register />} />
+              <Route path="/admin-setup" element={<AdminSetup />} />
               <Route path="/esqueci-senha" element={<ForgotPassword />} />
               <Route
                 path="/dashboard"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute allowedRoles={['student']}>
                     <StudentDashboard />
                   </ProtectedRoute>
                 }
@@ -31,7 +35,7 @@ function App() {
               <Route
                 path="/minhas-reservas"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute allowedRoles={['student']}>
                     <MinhasReservas />
                   </ProtectedRoute>
                 }
@@ -52,6 +56,7 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
           </ProductProvider>
         </NotificationProvider>

@@ -1,51 +1,79 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from './AuthContext';
 
 export const NotificationContext = createContext();
 
+const STORAGE_KEY = 'notifications';
+
+const getStoredNotifications = () => {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+  } catch {
+    return [];
+  }
+};
+
 export const NotificationProvider = ({ children }) => {
   const { user } = useContext(AuthContext);
-  const [notifications, setNotifications] = useState(() => {
-    const stored = localStorage.getItem('notifications');
-    return stored ? JSON.parse(stored) : [];
-  });
+  const [notifications, setNotifications] = useState(getStoredNotifications);
 
   const visibleNotifications = useMemo(
     () =>
-      notifications.filter(
-        (notification) =>
-          notification.audience === 'all' ||
-          !notification.audience ||
-          notification.audience === user?.role
-      ),
-    [notifications, user?.role]
+      notifications.filter((notification) => {
+        if (!user) return false;
+        if (notification.audience === 'admin' || notification.audience === 'student') {
+          if (notification.audience !== user.role) return false;
+        }
+        if (notification.userId && notification.userId !== user.id) return false;
+        return true;
+      }),
+    [notifications, user]
   );
 
   const unreadCount = visibleNotifications.filter((notification) => !notification.read).length;
 
   useEffect(() => {
-    localStorage.setItem('notifications', JSON.stringify(notifications));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications));
   }, [notifications]);
 
-  const addNotification = (message, type = 'info', audience = 'all') => {
+  useEffect(() => {
+    if (
+      typeof Notification !== 'undefined' &&
+      Notification.permission !== 'granted' &&
+      Notification.permission !== 'denied'
+    ) {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  const addNotification = (message, type = 'info', audience = user?.role || 'student', options = {}) => {
     const newNotification = {
       id: Date.now() + Math.random(),
       message,
       type,
       audience,
+      userId: options.userId || null,
       read: false,
       timestamp: new Date().toISOString(),
     };
 
     setNotifications((prev) => [newNotification, ...prev]);
 
-    if (
-      audience !== 'admin' &&
+    const shouldPush =
       typeof Notification !== 'undefined' &&
-      Notification.permission === 'granted'
-    ) {
-      new Notification('Cantina do Neném', { body: message, icon: '/vite.svg' });
+      Notification.permission === 'granted' &&
+      (audience === user?.role || options.userId === user?.id);
+
+    if (shouldPush) {
+      new Notification('Cantina do Neném', {
+        body: message,
+        icon: '/favicon.svg',
+        tag: `cantina-${type}`,
+      });
     }
+
+    return newNotification;
   };
 
   const markAsRead = (id) => {
@@ -69,16 +97,6 @@ export const NotificationProvider = ({ children }) => {
   const removeNotification = (id) => {
     setNotifications((prev) => prev.filter((notification) => notification.id !== id));
   };
-
-  useEffect(() => {
-    if (
-      typeof Notification !== 'undefined' &&
-      Notification.permission !== 'granted' &&
-      Notification.permission !== 'denied'
-    ) {
-      Notification.requestPermission();
-    }
-  }, []);
 
   return (
     <NotificationContext.Provider

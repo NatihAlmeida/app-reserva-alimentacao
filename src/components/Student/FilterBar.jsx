@@ -12,11 +12,11 @@ export default function FilterBar({
   setSortOrder,
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-4">
+    <div className="flex gap-3 overflow-x-auto pb-2 sm:flex-wrap sm:overflow-visible">
       <select
         value={sortOrder}
         onChange={(e) => setSortOrder(e.target.value)}
-        className="h-10 min-w-36 rounded-full border border-gray-300 bg-white px-5 text-sm text-gray-800 outline-none transition hover:border-primary-500 focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
+        className="h-11 shrink-0 rounded-full border border-gray-300 bg-white px-5 text-sm font-semibold text-gray-800 outline-none transition hover:border-primary-500 focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
       >
         <option value="default">Ordenar</option>
         <option value="price-asc">Menor Preço</option>
@@ -28,9 +28,9 @@ export default function FilterBar({
           key={filter.id}
           type="button"
           onClick={() => setSelectedDietary(filter.id)}
-          className={`h-10 rounded-full px-6 text-sm font-semibold transition-all ${
+          className={`h-11 shrink-0 rounded-full px-5 text-sm font-semibold transition-all ${
             selectedDietary === filter.id
-              ? 'bg-primary-500 text-white shadow-sm'
+              ? 'bg-primary-700 text-white shadow-sm'
               : 'border border-gray-300 bg-white text-gray-700 hover:border-primary-400 hover:text-primary-700'
           }`}
         >

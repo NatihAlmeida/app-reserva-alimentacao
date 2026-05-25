@@ -32,7 +32,7 @@ export default function Header({ title, searchSlot, cartCount = 0, onCartOpen })
             <div className="flex items-center justify-between gap-4">
               <button
                 type="button"
-                onClick={() => navigate('/dashboard')}
+                onClick={() => navigate(user?.role === 'admin' ? '/admin' : '/dashboard')}
                 className="text-left text-xl font-bold text-white sm:text-2xl"
               >
                 {title}
@@ -138,18 +138,20 @@ function IconActions({
         </button>
 
         {showUserMenu && (
-          <div className="absolute right-0 mt-2 w-52 rounded-xl bg-white py-2 shadow-lg">
-            <button
-              type="button"
-              onClick={() => {
-                setShowUserMenu(false);
-                navigate('/minhas-reservas');
-              }}
-              className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-50"
-            >
-              <FaClipboardList className="text-primary-500" />
-              Minhas Reservas
-            </button>
+          <div className="absolute right-0 z-[60] mt-2 w-52 rounded-xl bg-white py-2 shadow-lg">
+            {user?.role === 'student' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowUserMenu(false);
+                  navigate('/minhas-reservas');
+                }}
+                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-50"
+              >
+                <FaClipboardList className="text-primary-500" />
+                Minhas Reservas
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {

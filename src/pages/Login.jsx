@@ -1,50 +1,75 @@
 import { useContext, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FaLock, FaRegUser } from 'react-icons/fa';
+import { FaEnvelope, FaLock, FaShieldAlt, FaUserGraduate } from 'react-icons/fa';
 import { AuthContext } from '../context/AuthContext';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [role, setRole] = useState('student');
   const [error, setError] = useState('');
-  const { login } = useContext(AuthContext);
+  const { login, loading } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
 
-    const success = await login(email, password);
-
-    if (success) {
-      const loggedUser = JSON.parse(localStorage.getItem('user'));
-      navigate(loggedUser?.role === 'admin' ? '/admin' : '/dashboard');
-    } else {
-      setError('E-mail ou senha inválidos');
+    if (password.length < 6) {
+      setError('A senha deve ter pelo menos 6 caracteres.');
+      return;
     }
 
-    setLoading(false);
+    const result = await login(email, password, role);
+
+    if (result.success) {
+      navigate(result.user?.role === 'admin' ? '/admin' : '/dashboard', { replace: true });
+    } else {
+      setError(result.message);
+    }
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-primary-800 px-4 py-8">
+    <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#087765,#07362e_52%,#052821)] px-4 py-8">
       <section className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl sm:p-8">
-        <div className="mb-8 text-center">
+        <div className="mb-7 text-center">
           <h1 className="text-3xl font-extrabold text-primary-700">Cantina do Neném</h1>
-          <p className="mt-2 text-sm text-gray-500">Faça login para continuar</p>
+          <p className="mt-2 text-sm text-gray-500">Acesse sua área com segurança</p>
+        </div>
+
+        <div className="mb-5 grid grid-cols-2 rounded-2xl bg-gray-100 p-1">
+          <button
+            type="button"
+            onClick={() => setRole('student')}
+            className={`flex h-11 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${
+              role === 'student' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500'
+            }`}
+          >
+            <FaUserGraduate />
+            Aluno
+          </button>
+          <button
+            type="button"
+            onClick={() => setRole('admin')}
+            className={`flex h-11 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${
+              role === 'admin' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500'
+            }`}
+          >
+            <FaShieldAlt />
+            Admin
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <label className="relative block">
-            <FaRegUser className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-primary-700" />
+            <FaEnvelope className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-primary-700" />
             <input
               type="email"
               className="h-14 w-full rounded-xl border-0 bg-gray-100 pl-12 pr-4 text-base text-gray-700 outline-none ring-2 ring-transparent transition placeholder:text-gray-500 focus:bg-white focus:ring-primary-200"
-              placeholder="Usuário (e-mail)"
+              placeholder="E-mail"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
               required
             />
           </label>
@@ -57,21 +82,37 @@ export default function Login() {
               placeholder="Senha"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
               required
             />
           </label>
 
-          <div className="flex justify-end">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Link
+              to="/cadastro"
+              className="text-sm font-bold text-primary-700 transition hover:text-primary-900"
+            >
+              Criar conta de aluno
+            </Link>
             <Link
               to="/esqueci-senha"
-              className="text-sm font-extrabold text-primary-700 transition hover:text-primary-900"
+              className="text-sm font-bold text-primary-700 transition hover:text-primary-900"
             >
               Esqueceu a senha?
             </Link>
           </div>
 
+          {role === 'admin' && (
+            <Link
+              to="/admin-setup"
+              className="block rounded-xl bg-primary-50 p-3 text-center text-sm font-bold text-primary-800 transition hover:bg-primary-100"
+            >
+              Configurar acesso administrativo
+            </Link>
+          )}
+
           {error && (
-            <div className="rounded-lg bg-red-50 p-3 text-center text-sm font-semibold text-red-600">
+            <div className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-600">
               {error}
             </div>
           )}
@@ -79,16 +120,10 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="h-12 w-full rounded-xl bg-primary-700 text-base font-bold text-white transition hover:bg-primary-800 disabled:opacity-50"
+            className="h-12 w-full rounded-xl bg-primary-700 text-base font-bold text-white transition hover:bg-primary-800 disabled:cursor-wait disabled:opacity-60"
           >
             {loading ? 'Entrando...' : 'Acessar'}
           </button>
-
-          <p className="pt-3 text-center text-xs leading-5 text-gray-400">
-            Demo: admin@cantina.com / admin123
-            <br />
-            Aluno: aluno@escola.com / aluno123
-          </p>
         </form>
       </section>
     </main>

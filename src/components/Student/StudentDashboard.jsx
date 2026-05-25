@@ -1,16 +1,18 @@
 import { useContext, useMemo, useState } from 'react';
-import { ProductContext } from '../../context/ProductContext';
+import { AuthContext } from '../../context/AuthContext';
 import { NotificationContext } from '../../context/NotificationContext';
+import { ProductContext } from '../../context/ProductContext';
 import Header from '../UI/Header';
-import SearchBar from './SearchBar';
 import FilterBar from './FilterBar';
-import StudentProductCard from './StudentProductCard';
-import ReservationCart from './ReservationCart';
 import ProductDetailsModal from './ProductDetailsModal';
+import ReservationCart from './ReservationCart';
+import SearchBar from './SearchBar';
+import StudentProductCard from './StudentProductCard';
 
 export default function StudentDashboard() {
   const { products, addReservation } = useContext(ProductContext);
   const { addNotification } = useContext(NotificationContext);
+  const { user } = useContext(AuthContext);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDietary, setSelectedDietary] = useState('all');
   const [sortOrder, setSortOrder] = useState('default');
@@ -32,34 +34,36 @@ export default function StudentDashboard() {
       return matchesSearch && matchesDietary && product.status === 'active';
     });
 
-    if (sortOrder === 'price-asc') {
-      return [...list].sort((a, b) => a.price - b.price);
-    }
-
-    if (sortOrder === 'price-desc') {
-      return [...list].sort((a, b) => b.price - a.price);
-    }
-
+    if (sortOrder === 'price-asc') return [...list].sort((a, b) => a.price - b.price);
+    if (sortOrder === 'price-desc') return [...list].sort((a, b) => b.price - a.price);
     return list;
   }, [products, searchTerm, selectedDietary, sortOrder]);
 
   const handleAddToCart = (product, quantity = 1) => {
+    if (user?.blocked) {
+      addNotification(
+        'Your account has been temporarily blocked. Please contact the cafeteria.',
+        'error',
+        'student',
+        { userId: user.id }
+      );
+      return;
+    }
+
     if (product.quantity <= 0) {
-      addNotification(`Desculpe, ${product.name} está esgotado!`);
+      addNotification(`Desculpe, ${product.name} está esgotado!`, 'warning', 'student', {
+        userId: user?.id,
+      });
       return;
     }
 
     setCartItems((current) => {
       const existing = current.find((item) => item.id === product.id);
-
       if (existing) {
         return current.map((item) =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + quantity }
-            : item
+          item.id === product.id ? { ...item, quantity: item.quantity + quantity } : item
         );
       }
-
       return [...current, { ...product, quantity }];
     });
 
@@ -91,7 +95,7 @@ export default function StudentDashboard() {
   const handleCheckout = ({ pickupDate, pickupTime }) => {
     if (cartItems.length === 0) return;
 
-    cartItems.forEach((item) => {
+    const results = cartItems.map((item) =>
       addReservation({
         productId: item.id,
         productName: item.name,
@@ -101,18 +105,23 @@ export default function StudentDashboard() {
         pickupTime,
         price: item.price * item.quantity,
         image: item.image,
-      });
-    });
+      })
+    );
+
+    const failed = results.find((result) => !result.success);
+    if (failed) {
+      addNotification(failed.message, 'error', 'student', { userId: user?.id });
+      return;
+    }
 
     const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const itemSummary = cartItems
-      .map((item) => `${item.quantity}x ${item.name}`)
-      .join(', ');
+    const itemSummary = cartItems.map((item) => `${item.quantity}x ${item.name}`).join(', ');
 
     addNotification(
       `Reserva confirmada para ${pickupTime}. Você pode acompanhar em Minhas Reservas.`,
       'success',
-      'student'
+      'student',
+      { userId: user?.id }
     );
     addNotification(
       `Nova reserva confirmada: ${itemSummary} para ${pickupDate} às ${pickupTime}. Total: R$ ${total
@@ -135,6 +144,12 @@ export default function StudentDashboard() {
       />
 
       <main className="container-custom py-6 pb-24">
+        {user?.blocked && (
+          <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+            Your account has been temporarily blocked. Please contact the cafeteria.
+          </div>
+        )}
+
         <FilterBar
           selectedDietary={selectedDietary}
           setSelectedDietary={setSelectedDietary}

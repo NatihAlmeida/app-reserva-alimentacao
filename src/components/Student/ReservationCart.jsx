@@ -2,9 +2,6 @@ import { useMemo, useState } from 'react';
 import { FaCalendarAlt, FaClock, FaRegTrashAlt, FaShoppingBag, FaTimes } from 'react-icons/fa';
 
 const pickupTimes = [
-  '17:00',
-  '17:30',
-  '18:00',
   '18:30',
   '19:00',
   '19:30',
@@ -26,7 +23,7 @@ export default function ReservationCart({
   onCheckout,
 }) {
   const [pickupDate, setPickupDate] = useState(getTodayInputValue);
-  const [pickupTime, setPickupTime] = useState('17:00');
+  const [pickupTime, setPickupTime] = useState('18:30');
   const [checkoutError, setCheckoutError] = useState('');
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
@@ -42,6 +39,15 @@ export default function ReservationCart({
   const handleCheckout = () => {
     if (!pickupDate || !pickupTime) {
       setCheckoutError('Escolha a data e o horário de retirada.');
+      return;
+    }
+
+    const currentDate = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const afterNoon = now.getHours() * 60 + now.getMinutes() >= 12 * 60;
+
+    if (pickupDate === currentDate && afterNoon) {
+      setCheckoutError('Reservations for today closed at 12:00 PM.');
       return;
     }
 
