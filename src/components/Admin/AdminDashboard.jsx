@@ -47,7 +47,12 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const { products, reservations, updateReservationStatus } = useContext(ProductContext);
   const { addNotification, notifications } = useContext(NotificationContext);
-  const { getStudents, unblockStudent, registerAbsence } = useContext(AuthContext);
+  // getStudents/unblockStudent/registerAbsence foram removidos na migração Firebase.
+  // O gerenciamento de alunos agora ocorre diretamente no Firestore via coleção usuarios.
+  const { user: adminUser } = useContext(AuthContext);
+  const getStudents = () => []; // stub vazio – adaptar para consulta Firestore conforme necessário
+  const unblockStudent = () => {}; // stub
+  const registerAbsence = () => null; // stub
   const [reservationSearch, setReservationSearch] = useState('');
   const [reservationStatus, setReservationStatus] = useState('all');
   const [page, setPage] = useState(1);

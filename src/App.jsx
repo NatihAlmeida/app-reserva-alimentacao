@@ -3,7 +3,7 @@ import { AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { ProductProvider } from './context/ProductContext';
 import Login from './pages/Login';
-import Register from './pages/Register';
+import Register from './pages/Cadastro';
 import AdminSetup from './pages/AdminSetup';
 import ForgotPassword from './pages/ForgotPassword';
 import Settings from './pages/Settings';

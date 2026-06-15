@@ -1,7 +1,7 @@
 {
-  "name": "cantina-nenem",
+  "name": "cantina-nenem-firebase",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "date-fns": "^4.1.0",
+    "firebase": "^11.1.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-icons": "^5.6.0",

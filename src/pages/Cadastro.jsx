@@ -5,24 +5,35 @@ import {
   FaEnvelope,
   FaIdCard,
   FaLock,
-  FaShieldAlt,
-  FaUserTie,
+  FaUniversity,
+  FaUser,
 } from "react-icons/fa";
 import { AuthContext } from "../context/AuthContext";
 
-export default function AdminSetup() {
-  const { createAdminAccess, validarEmailIFSC } = useContext(AuthContext);
+const CURSOS = [
+  "Técnico em Informática",
+  "Técnico em Administração",
+  "Técnico em Modelagem do Vestuário",
+  "Técnico em Química",
+  "Graduação em Análise e Desenvolvimento de Sistemas",
+  "Graduação em Design de Moda",
+  "Graduação em Processos Gerenciais",
+  "Outro",
+];
+
+export default function Cadastro() {
+  const { registerStudent, loading, validarEmailIFSC } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
     nome: "",
     email: "",
     matriculaID: "",
+    curso: "",
     password: "",
     confirmPassword: "",
   });
   const [feedback, setFeedback] = useState({ type: "", message: "" });
-  const [isLoading, setIsLoading] = useState(false);
 
   const updateField = (field, value) =>
     setForm((current) => ({ ...current, [field]: value }));
@@ -31,22 +42,33 @@ export default function AdminSetup() {
     e.preventDefault();
     setFeedback({ type: "", message: "" });
 
-    // Validação de domínio IFSC obrigatória
+    // ── Validações de domínio IFSC ────────────────────────────────────────
     if (!validarEmailIFSC(form.email)) {
       setFeedback({
         type: "error",
         message:
-          "Apenas e-mails institucionais do IFSC são permitidos " +
-          "(@ifsc.edu.br ou @aluno.ifsc.edu.br).",
+          "Apenas e-mails institucionais do IFSC são aceitos " +
+          "(@aluno.ifsc.edu.br ou @ifsc.edu.br).",
       });
       return;
     }
 
+    // ── Validações de formulário ──────────────────────────────────────────
     if (form.nome.trim().length < 3) {
+      setFeedback({ type: "error", message: "Informe seu nome completo." });
+      return;
+    }
+
+    if (form.matriculaID.trim().length < 3) {
       setFeedback({
         type: "error",
-        message: "Informe o nome do administrador.",
+        message: "Informe sua matrícula institucional.",
       });
+      return;
+    }
+
+    if (!form.curso) {
+      setFeedback({ type: "error", message: "Selecione seu curso." });
       return;
     }
 
@@ -63,17 +85,13 @@ export default function AdminSetup() {
       return;
     }
 
-    setIsLoading(true);
-    const result = await createAdminAccess(form);
-    setIsLoading(false);
-
-    setFeedback({
-      type: result.success ? "success" : "error",
-      message: result.message,
-    });
+    const result = await registerStudent(form);
 
     if (result.success) {
-      setTimeout(() => navigate("/login"), 800);
+      setFeedback({ type: "success", message: "Conta criada com sucesso!" });
+      navigate("/dashboard", { replace: true });
+    } else {
+      setFeedback({ type: "error", message: result.message });
     }
   };
 
@@ -89,27 +107,26 @@ export default function AdminSetup() {
         </Link>
 
         <div className="mb-7">
-          <h1 className="flex items-center gap-2 text-2xl font-extrabold text-gray-900">
-            <FaShieldAlt className="text-primary-700" />
-            Acesso administrativo
+          <h1 className="text-2xl font-extrabold text-gray-900">
+            Criar conta de aluno
           </h1>
           <p className="mt-2 text-sm leading-6 text-gray-500">
-            Crie uma conta de administrador para gerenciar a cantina. Requer
-            e-mail institucional IFSC.
+            Use seu e-mail institucional IFSC e seus dados para reservar
+            refeições sem glúten.
           </p>
         </div>
 
         {/* Banner de domínio */}
         <div className="mb-5 rounded-xl bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
-          🔒 Apenas <strong>@ifsc.edu.br</strong> e{" "}
-          <strong>@aluno.ifsc.edu.br</strong> são aceitos
+          🔒 Apenas <strong>@aluno.ifsc.edu.br</strong> e{" "}
+          <strong>@ifsc.edu.br</strong> são aceitos
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <AuthInput
-            icon={<FaUserTie />}
+            icon={<FaUser />}
             type="text"
-            placeholder="Nome do administrador"
+            placeholder="Nome completo"
             value={form.nome}
             onChange={(v) => updateField("nome", v)}
             autoComplete="name"
@@ -118,7 +135,7 @@ export default function AdminSetup() {
           <AuthInput
             icon={<FaEnvelope />}
             type="email"
-            placeholder="email@ifsc.edu.br"
+            placeholder="seuemail@aluno.ifsc.edu.br"
             value={form.email}
             onChange={(v) => updateField("email", v)}
             autoComplete="email"
@@ -127,17 +144,34 @@ export default function AdminSetup() {
           <AuthInput
             icon={<FaIdCard />}
             type="text"
-            placeholder="Matrícula/SIAPE (opcional)"
+            placeholder="Matrícula (ex: 202400123)"
             value={form.matriculaID}
             onChange={(v) => updateField("matriculaID", v)}
             autoComplete="off"
-            required={false}
           />
+
+          {/* Campo Curso */}
+          <label className="relative block">
+            <FaUniversity className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-primary-700" />
+            <select
+              value={form.curso}
+              onChange={(e) => updateField("curso", e.target.value)}
+              required
+              className="h-14 w-full cursor-pointer appearance-none rounded-xl border-0 bg-gray-100 pl-12 pr-4 text-base text-gray-700 outline-none ring-2 ring-transparent transition focus:bg-white focus:ring-primary-200"
+            >
+              <option value="">Selecione seu curso</option>
+              {CURSOS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <AuthInput
             icon={<FaLock />}
             type="password"
-            placeholder="Senha"
+            placeholder="Senha (mínimo 6 caracteres)"
             value={form.password}
             onChange={(v) => updateField("password", v)}
             autoComplete="new-password"
@@ -166,10 +200,10 @@ export default function AdminSetup() {
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={loading}
             className="h-12 w-full rounded-xl bg-primary-700 text-base font-bold text-white transition hover:bg-primary-800 disabled:cursor-wait disabled:opacity-60"
           >
-            {isLoading ? "Criando…" : "Criar acesso admin"}
+            {loading ? "Criando conta…" : "Criar conta"}
           </button>
         </form>
       </section>
@@ -177,7 +211,7 @@ export default function AdminSetup() {
   );
 }
 
-function AuthInput({ icon, onChange, required = true, ...props }) {
+function AuthInput({ icon, onChange, ...props }) {
   return (
     <label className="relative block">
       <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-primary-700">
@@ -185,9 +219,9 @@ function AuthInput({ icon, onChange, required = true, ...props }) {
       </span>
       <input
         {...props}
-        required={required}
         onChange={(e) => onChange(e.target.value)}
         className="h-14 w-full rounded-xl border-0 bg-gray-100 pl-12 pr-4 text-base text-gray-700 outline-none ring-2 ring-transparent transition placeholder:text-gray-500 focus:bg-white focus:ring-primary-200"
+        required
       />
     </label>
   );

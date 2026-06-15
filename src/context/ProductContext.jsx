@@ -1,231 +1,229 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useState } from 'react';
-import { AuthContext } from './AuthContext';
-import pastelPalmito from '../assets/img/pastel-palmito.webp';
-import coxinha from '../assets/img/coxinha.webp';
-import sanduicheSemGluten from '../assets/img/sanduiche-sem-gluten.jpeg';
-import saladaDeFruta from '../assets/img/salada de fruta.webp';
+import { createContext, useContext, useEffect, useState } from "react";
+import { AuthContext } from "./AuthContext";
+import {
+  buscarProdutosDisponiveis,
+  buscarTodosProdutos,
+  cadastrarNovoProduto,
+  atualizarProduto,
+  removerProduto,
+} from "../firebase/produtos";
+import {
+  criarPedidoCantina,
+  buscarPedidosAluno,
+  buscarTodosPedidos,
+  atualizarStatusPedido,
+} from "../firebase/pedidos";
 
 export const ProductContext = createContext();
 
-const PRODUCT_SEED_VERSION = 'production-refactor-v3';
-export const RESERVATION_DEADLINE = '12:00';
-export const PICKUP_START = '18:30';
-export const PICKUP_END = '21:30';
+export const RESERVATION_DEADLINE = "12:00";
+export const PICKUP_START = "18:30";
+export const PICKUP_END = "21:30";
 
 const getMinutes = (time) => {
-  const [hours, minutes] = time.split(':').map(Number);
+  const [hours, minutes] = time.split(":").map(Number);
   return hours * 60 + minutes;
 };
 
-export const isToday = (dateValue) => {
-  const today = new Date().toISOString().split('T')[0];
-  return dateValue === today;
-};
-
-export const isBeforeReservationDeadline = (dateValue = new Date().toISOString().split('T')[0]) => {
-  if (!isToday(dateValue)) return true;
+export const isBeforeReservationDeadline = () => {
   const now = new Date();
   return now.getHours() * 60 + now.getMinutes() < getMinutes(RESERVATION_DEADLINE);
 };
 
-export const canCancelReservation = (reservation) =>
-  reservation.status === 'confirmed' && isBeforeReservationDeadline(reservation.pickupDate);
+// Converte produto do Firestore para o formato usado pelo frontend
+const normalizarProduto = (firestoreDoc) => ({
+  id: firestoreDoc.produtosID,
+  produtosID: firestoreDoc.produtosID,
+  name: firestoreDoc.nome,
+  nome: firestoreDoc.nome,
+  price: firestoreDoc.preco || 0,
+  preco: firestoreDoc.preco || 0,
+  image: firestoreDoc.imagemUrl || "",
+  imagemUrl: firestoreDoc.imagemUrl || "",
+  status: firestoreDoc["disponível"] ? "active" : "inactive",
+  disponivel: firestoreDoc["disponível"] ?? true,
+  // Alergênicos como array de strings (para o FilterBar)
+  dietary: [
+    firestoreDoc.temGlutem && "CONTÉM GLÚTEN",
+    firestoreDoc.temLactose && "CONTÉM LACTOSE",
+    firestoreDoc.temAcucarAlto && "CONTÉM AÇÚCAR ALTO",
+    !firestoreDoc.temGlutem && "SEM GLÚTEN",
+    !firestoreDoc.temLactose && "SEM LACTOSE",
+  ].filter(Boolean),
+  temGlutem: firestoreDoc.temGlutem ?? false,
+  temLactose: firestoreDoc.temLactose ?? false,
+  temAcucarAlto: firestoreDoc.temAcucarAlto ?? false,
+  criadoEm: firestoreDoc.criadoEm,
+  description: firestoreDoc.descricao || "",
+  category: firestoreDoc.categoria || "Geral",
+  quantity: firestoreDoc.quantidade || 0,
+});
 
-const isPastPickupWindow = (reservation) => {
-  if (!reservation.pickupDate) return false;
-  const now = new Date();
-  const today = now.toISOString().split('T')[0];
-  if (reservation.pickupDate < today) return true;
-  if (reservation.pickupDate > today) return false;
-  return now.getHours() * 60 + now.getMinutes() > getMinutes(PICKUP_END);
-};
-
-const normalizeReservation = (reservation) => {
-  const createdDate = reservation.createdAt
-    ? new Date(reservation.createdAt).toISOString().split('T')[0]
-    : new Date().toISOString().split('T')[0];
-
-  return {
-    ...reservation,
-    status: reservation.status === 'pending' ? 'confirmed' : reservation.status,
-    pickupDate: reservation.pickupDate || createdDate,
-    pickupTime: reservation.pickupTime || reservation.time || PICKUP_START,
-    time: reservation.pickupTime || reservation.time || PICKUP_START,
-  };
-};
-
-const initialProducts = [
-  {
-    id: 1,
-    name: 'Pastel de Palmito',
-    description: 'Massa crocante e dourada, recheada com palmito cremoso e temperos especiais.',
-    ingredients: 'Massa crocante tradicional frita, recheio cremoso de palmito com azeitonas e temperos da casa.',
-    price: 9.5,
-    category: 'Salgados',
-    image: pastelPalmito,
-    status: 'active',
-    available: true,
-    time: '11:00',
-    quantity: 15,
-    dietary: ['CONTÉM GLÚTEN', 'SEM LACTOSE'],
-  },
-  {
-    id: 2,
-    name: 'Coxinha de Frango',
-    description: 'Frango desfiado bem temperado, empanado e frito na hora.',
-    ingredients: 'Massa de batata empanada, recheio farto de frango desfiado com um toque de requeijão.',
-    price: 8,
-    category: 'Salgados',
-    image: coxinha,
-    status: 'active',
-    available: true,
-    time: '11:30',
-    quantity: 20,
-    dietary: ['CONTÉM GLÚTEN'],
-  },
-  {
-    id: 3,
-    name: 'Sanduíche Natural',
-    description: 'Pão leve com recheio fresco, folhas e ingredientes selecionados.',
-    ingredients: 'Pão de forma artesanal sem glúten, patê de frango com maionese light, cenoura ralada e alface americana.',
-    price: 12,
-    category: 'Lanches',
-    image: sanduicheSemGluten,
-    status: 'active',
-    available: true,
-    time: '10:30',
-    quantity: 18,
-    dietary: ['SEM GLÚTEN', 'SEM LACTOSE'],
-  },
-  {
-    id: 4,
-    name: 'Salada de Frutas',
-    description: 'Frutas frescas cortadas no dia, servidas em porção individual.',
-    ingredients: 'Mix de frutas frescas (morango, maçã, banana, mamão) acompanhado de suco de laranja natural sem açúcar.',
-    price: 6,
-    category: 'Doces',
-    image: saladaDeFruta,
-    status: 'active',
-    available: true,
-    time: '14:00',
-    quantity: 14,
-    dietary: ['SEM GLÚTEN', 'SEM LACTOSE', 'SEM AÇÚCAR'],
-  },
-];
+// Converte pedido do Firestore para o formato legível pelo frontend
+const normalizarPedido = (firestoreDoc) => ({
+  id: firestoreDoc.pedidosID,
+  pedidosID: firestoreDoc.pedidosID,
+  studentId: firestoreDoc.alunoID,
+  studentName: firestoreDoc.alunoNome,
+  alunoID: firestoreDoc.alunoID,
+  alunoNome: firestoreDoc.alunoNome,
+  produtos: firestoreDoc.produtos || [],
+  status: firestoreDoc.status,
+  total: firestoreDoc.total,
+  data: firestoreDoc.data,
+  hora: firestoreDoc.hora,
+  criadoEm: firestoreDoc.criadoEm,
+});
 
 export const ProductProvider = ({ children }) => {
   const { user } = useContext(AuthContext);
-  const [products, setProducts] = useState(() => {
-    const stored = localStorage.getItem('products');
-    const storedVersion = localStorage.getItem('productSeedVersion');
+  const [products, setProducts] = useState([]);
+  const [reservations, setReservations] = useState([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [loadingReservations, setLoadingReservations] = useState(false);
 
-    if (stored && storedVersion === PRODUCT_SEED_VERSION) {
-      return JSON.parse(stored);
-    }
-
-    localStorage.setItem('products', JSON.stringify(initialProducts));
-    localStorage.setItem('productSeedVersion', PRODUCT_SEED_VERSION);
-    return initialProducts;
-  });
-
-  const [reservations, setReservations] = useState(() => {
-    const storedRes = localStorage.getItem('reservations');
-    if (storedRes) return JSON.parse(storedRes).map(normalizeReservation);
-    return [];
-  });
-
+  // ── Carrega produtos ao montar ──────────────────────────────────────────
   useEffect(() => {
-    localStorage.setItem('products', JSON.stringify(products));
-  }, [products]);
-
-  useEffect(() => {
-    const expirationTimer = setTimeout(() => {
-      setReservations((currentReservations) => {
-        const nextReservations = currentReservations.map((reservation) =>
-          reservation.status === 'confirmed' && isPastPickupWindow(reservation)
-            ? { ...reservation, status: 'not_picked_up', expiredAt: new Date().toISOString() }
-            : reservation
-        );
-        return JSON.stringify(nextReservations) === JSON.stringify(currentReservations)
-          ? currentReservations
-          : nextReservations;
-      });
-    }, 0);
-
-    const updatedReservations = reservations.map((reservation) =>
-      reservation.status === 'confirmed' && isPastPickupWindow(reservation)
-        ? { ...reservation, status: 'not_picked_up', expiredAt: new Date().toISOString() }
-        : reservation
-    );
-
-    localStorage.setItem('reservations', JSON.stringify(updatedReservations));
-    return () => clearTimeout(expirationTimer);
-  }, [reservations]);
-
-  const addProduct = (product) => {
-    const newProduct = { ...product, id: Date.now() };
-    setProducts((prev) => [...prev, newProduct]);
-    return newProduct;
-  };
-
-  const updateProduct = (id, updatedProduct) => {
-    setProducts((prev) =>
-      prev.map((product) => (product.id === id ? { ...product, ...updatedProduct } : product))
-    );
-  };
-
-  const deleteProduct = (id) => {
-    setProducts((prev) => prev.filter((product) => product.id !== id));
-  };
-
-  const addReservation = (reservation) => {
-    if (!isBeforeReservationDeadline(reservation.pickupDate)) {
-      return {
-        success: false,
-        message: 'Reservations for today closed at 12:00 PM.',
-      };
-    }
-
-    const newReservation = {
-      ...reservation,
-      id: Date.now() + Math.random(),
-      studentId: reservation.studentId || user?.id,
-      studentName: reservation.studentName || user?.name,
-      studentEmail: reservation.studentEmail || user?.email,
-      studentProfilePicture: reservation.studentProfilePicture || user?.profilePicture || '',
-      status: 'confirmed',
-      createdAt: new Date().toISOString(),
+    const carregarProdutos = async () => {
+      setLoadingProducts(true);
+      try {
+        const isAdmin = user?.perfil === "admin";
+        const raw = isAdmin
+          ? await buscarTodosProdutos()
+          : await buscarProdutosDisponiveis();
+        setProducts(raw.map(normalizarProduto));
+      } catch (error) {
+        console.error("Erro ao carregar produtos:", error);
+      } finally {
+        setLoadingProducts(false);
+      }
     };
 
-    setReservations((prev) => [...prev, newReservation]);
-    return { success: true, reservation: newReservation };
-  };
+    carregarProdutos();
+  }, [user?.perfil]);
 
-  const updateReservationStatus = (id, status) => {
-    setReservations((prev) =>
-      prev.map((res) =>
-        res.id === id ? { ...res, status, updatedAt: new Date().toISOString() } : res
-      )
-    );
-  };
-
-  const cancelReservation = (id) => {
-    const reservation = reservations.find((item) => item.id === id);
-
-    if (!reservation) {
-      return { success: false, message: 'Reserva não encontrada.' };
+  // ── Carrega pedidos quando o usuário está logado ────────────────────────
+  useEffect(() => {
+    if (!user) {
+      setReservations([]);
+      return;
     }
 
-    if (!canCancelReservation(reservation)) {
+    const carregarPedidos = async () => {
+      setLoadingReservations(true);
+      try {
+        const raw =
+          user.perfil === "admin"
+            ? await buscarTodosPedidos()
+            : await buscarPedidosAluno(user.matriculaID);
+        setReservations(raw.map(normalizarPedido));
+      } catch (error) {
+        console.error("Erro ao carregar pedidos:", error);
+      } finally {
+        setLoadingReservations(false);
+      }
+    };
+
+    carregarPedidos();
+  }, [user]);
+
+  // ── CRUD Produtos (admin) ───────────────────────────────────────────────
+  const addProduct = async (produto) => {
+    try {
+      const id = await cadastrarNovoProduto(produto);
+      const novoNormalizado = normalizarProduto({ produtosID: id, ...produto });
+      setProducts((prev) => [...prev, novoNormalizado]);
+      return novoNormalizado;
+    } catch (error) {
+      console.error("Erro ao adicionar produto:", error);
+      throw error;
+    }
+  };
+
+  const updateProduct = async (produtosID, dadosAtualizados) => {
+    try {
+      await atualizarProduto(produtosID, dadosAtualizados);
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.produtosID === produtosID
+            ? normalizarProduto({ ...p, produtosID, ...dadosAtualizados })
+            : p
+        )
+      );
+    } catch (error) {
+      console.error("Erro ao atualizar produto:", error);
+      throw error;
+    }
+  };
+
+  const deleteProduct = async (produtosID) => {
+    try {
+      await removerProduto(produtosID);
+      setProducts((prev) => prev.filter((p) => p.produtosID !== produtosID));
+    } catch (error) {
+      console.error("Erro ao remover produto:", error);
+      throw error;
+    }
+  };
+
+  // ── Criar Pedido (aluno) ────────────────────────────────────────────────
+  const addReservation = async (cartItems) => {
+    if (!isBeforeReservationDeadline()) {
       return {
         success: false,
-        message: 'Cancellation is only available until 12:00 PM on the reservation day.',
+        message: "Reservas para hoje encerraram às 12h.",
       };
     }
 
-    updateReservationStatus(id, 'cancelled');
-    return { success: true, reservation: { ...reservation, status: 'cancelled' } };
+    if (!user) {
+      return { success: false, message: "Usuário não autenticado." };
+    }
+
+    try {
+      const total = cartItems.reduce(
+        (sum, item) => sum + (item.preco || item.price || 0) * (item.quantidade || item.quantity || 1),
+        0
+      );
+
+      const pedidoID = await criarPedidoCantina(user, cartItems, total);
+
+      const novoPedido = normalizarPedido({
+        pedidosID: pedidoID,
+        alunoID: user.matriculaID,
+        alunoNome: user.nome,
+        produtos: cartItems.map((item) => ({
+          produtoID: item.produtosID || item.id,
+          nome: item.nome || item.name,
+          Valor: item.preco || item.price || 0,
+          Quantidade: item.quantidade || item.quantity || 1,
+        })),
+        status: "pendente",
+        total,
+        data: new Date().toLocaleDateString("pt-BR").replace(/\//g, "-"),
+        hora: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+      });
+
+      setReservations((prev) => [novoPedido, ...prev]);
+      return { success: true, reservation: novoPedido };
+    } catch (error) {
+      console.error("Erro ao criar pedido:", error);
+      return { success: false, message: "Erro ao processar pedido." };
+    }
+  };
+
+  // ── Atualizar status (admin) ────────────────────────────────────────────
+  const updateReservationStatus = async (pedidosID, novoStatus) => {
+    try {
+      await atualizarStatusPedido(pedidosID, novoStatus);
+      setReservations((prev) =>
+        prev.map((r) =>
+          r.pedidosID === pedidosID ? { ...r, status: novoStatus } : r
+        )
+      );
+    } catch (error) {
+      console.error("Erro ao atualizar status:", error);
+    }
   };
 
   return (
@@ -233,12 +231,13 @@ export const ProductProvider = ({ children }) => {
       value={{
         products,
         reservations,
+        loadingProducts,
+        loadingReservations,
         addProduct,
         updateProduct,
         deleteProduct,
         addReservation,
         updateReservationStatus,
-        cancelReservation,
         isBeforeReservationDeadline,
       }}
     >

@@ -1,249 +1,220 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useState } from 'react';
+import { createContext, useEffect, useState } from "react";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+} from "firebase/auth";
+import { auth } from "../firebase/config";
+import {
+  salvarPerfilUsuario,
+  obterPerfilUsuario,
+  atualizarPerfilUsuario,
+} from "../firebase/usuarios";
 
 export const AuthContext = createContext();
 
-const STORAGE_KEYS = {
-  users: 'authUsers',
-  session: 'authSession',
+// ─── Regra de domínio IFSC ────────────────────────────────────────────────────
+const DOMINIOS_PERMITIDOS = ["@aluno.ifsc.edu.br", "@ifsc.edu.br"];
+
+export const validarEmailIFSC = (email) => {
+  const normalizado = email.trim().toLowerCase();
+  return DOMINIOS_PERMITIDOS.some((dominio) => normalizado.endsWith(dominio));
 };
 
-const readJson = (key, fallback) => {
-  try {
-    const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : fallback;
-  } catch {
-    return fallback;
-  }
-};
+const MENSAGEM_DOMINIO_INVALIDO =
+  "Apenas e-mails institucionais do IFSC são permitidos " +
+  "(@aluno.ifsc.edu.br ou @ifsc.edu.br).";
 
-const isRemovedDemoAccount = (candidate) =>
-  (candidate.email === `admin${'@'}cantina.com` && candidate.password === `admin${'123'}`) ||
-  (candidate.email === `aluno${'@'}escola.com` && candidate.password === `aluno${'123'}`);
-
-const getStoredUsers = () => {
-  const users = readJson(STORAGE_KEYS.users, []);
-  const sanitizedUsers = users.filter((candidate) => !isRemovedDemoAccount(candidate));
-
-  if (sanitizedUsers.length !== users.length) {
-    saveUsers(sanitizedUsers);
-  }
-
-  return sanitizedUsers;
-};
-
-const saveUsers = (users) => {
-  localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
-};
-
-const toPublicUser = (userData) => {
-  if (!userData) return null;
-  const publicUser = { ...userData };
-  delete publicUser.password;
-  return publicUser;
-};
-
-const persistSession = (userData) => {
-  const publicUser = toPublicUser(userData);
-  const session = {
-    token: `local-jwt-ready-${Date.now()}`,
-    refreshToken: `local-refresh-${Date.now()}`,
-    user: publicUser,
-    expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 8).toISOString(),
-  };
-
-  localStorage.setItem(STORAGE_KEYS.session, JSON.stringify(session));
-  return publicUser;
-};
-
+// ─── Provider ─────────────────────────────────────────────────────────────────
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(() => {
-    const session = readJson(STORAGE_KEYS.session, null);
-    if (!session?.user || (session.expiresAt && new Date(session.expiresAt) < new Date())) {
-      localStorage.removeItem(STORAGE_KEYS.session);
-      return null;
-    }
-    return session.user;
-  });
-  const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState(null);          // perfil Firestore + uid
+  const [firebaseUser, setFirebaseUser] = useState(null); // objeto Firebase Auth
+  const [loading, setLoading] = useState(true);
 
-  const login = async (email, password, requestedRole = 'student') => {
-    setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 350));
-
-    const normalizedEmail = email.trim().toLowerCase();
-    const users = getStoredUsers();
-    const foundUser = users.find(
-      (candidate) =>
-        candidate.email.toLowerCase() === normalizedEmail &&
-        candidate.password === password &&
-        candidate.role === requestedRole
-    );
-
-    setLoading(false);
-    if (!foundUser) {
-      return { success: false, message: 'E-mail, senha ou tipo de acesso inválido.' };
-    }
-
-    if (foundUser.blocked && foundUser.role === 'student') {
-      return {
-        success: false,
-        message: 'Sua conta está temporariamente bloqueada. Procure a cantina.',
-      };
-    }
-
-    const publicUser = persistSession(foundUser);
-    setUser(publicUser);
-    return { success: true, user: publicUser };
-  };
-
-  const registerStudent = async ({ name, email, password }) => {
-    setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 350));
-
-    const normalizedEmail = email.trim().toLowerCase();
-    const users = getStoredUsers();
-
-    if (users.some((candidate) => candidate.email.toLowerCase() === normalizedEmail)) {
+  // Observa mudanças no estado de autenticação do Firebase
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        setFirebaseUser(fbUser);
+        try {
+          const perfil = await obterPerfilUsuario(fbUser.uid);
+          setUser(perfil);
+        } catch {
+          setUser(null);
+        }
+      } else {
+        setFirebaseUser(null);
+        setUser(null);
+      }
       setLoading(false);
-      return { success: false, message: 'Já existe uma conta com este e-mail.' };
-    }
-
-    const newUser = {
-      id: Date.now(),
-      name: name.trim(),
-      email: normalizedEmail,
-      password,
-      role: 'student',
-      profilePicture: '',
-      absences: 0,
-      blocked: false,
-      createdAt: new Date().toISOString(),
-    };
-
-    saveUsers([...users, newUser]);
-    const publicUser = persistSession(newUser);
-    setUser(publicUser);
-    setLoading(false);
-    return { success: true, user: publicUser };
-  };
-
-  const createAdminAccess = ({ name, email, password }) => {
-    const users = getStoredUsers();
-    const normalizedEmail = email.trim().toLowerCase();
-
-    if (users.some((candidate) => candidate.email.toLowerCase() === normalizedEmail)) {
-      return { success: false, message: 'E-mail já cadastrado.' };
-    }
-
-    saveUsers([
-      ...users,
-      {
-        id: Date.now(),
-        name: name.trim(),
-        email: normalizedEmail,
-        password,
-        role: 'admin',
-        profilePicture: '',
-        createdAt: new Date().toISOString(),
-      },
-    ]);
-
-    return { success: true, message: 'Acesso administrativo criado.' };
-  };
-
-  const updateProfile = (profileData) => {
-    if (!user) return false;
-
-    const users = getStoredUsers();
-    const updatedUsers = users.map((candidate) =>
-      candidate.id === user.id ? { ...candidate, ...profileData } : candidate
-    );
-    const updatedUser = updatedUsers.find((candidate) => candidate.id === user.id);
-    const publicUser = persistSession(updatedUser);
-
-    saveUsers(updatedUsers);
-    setUser(publicUser);
-    return true;
-  };
-
-  const changePassword = (currentPassword, newPassword) => {
-    if (!user) return { success: false, message: 'Usuário não encontrado.' };
-
-    const users = getStoredUsers();
-    const currentUser = users.find((candidate) => candidate.id === user.id);
-
-    if (!currentUser || currentUser.password !== currentPassword) {
-      return { success: false, message: 'Senha atual incorreta.' };
-    }
-
-    saveUsers(
-      users.map((candidate) =>
-        candidate.id === user.id ? { ...candidate, password: newPassword } : candidate
-      )
-    );
-
-    return { success: true, message: 'Senha alterada com sucesso.' };
-  };
-
-  const requestPasswordReset = async (email) => {
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    const users = getStoredUsers();
-    return users.some((candidate) => candidate.email.toLowerCase() === email.trim().toLowerCase());
-  };
-
-  const registerAbsence = (studentId) => {
-    const users = getStoredUsers();
-    let updatedStudent = null;
-
-    const updatedUsers = users.map((candidate) => {
-      if (candidate.id !== studentId || candidate.role !== 'student') return candidate;
-      const absences = (candidate.absences || 0) + 1;
-      updatedStudent = { ...candidate, absences, blocked: absences >= 3 };
-      return updatedStudent;
     });
 
-    saveUsers(updatedUsers);
-    if (user?.id === studentId && updatedStudent) {
-      const publicUser = persistSession(updatedStudent);
-      setUser(publicUser);
+    return unsubscribe;
+  }, []);
+
+  // ── Login ─────────────────────────────────────────────────────────────────
+  const login = async (email, password) => {
+    if (!validarEmailIFSC(email)) {
+      return { success: false, message: MENSAGEM_DOMINIO_INVALIDO };
     }
 
-    return updatedStudent ? toPublicUser(updatedStudent) : null;
+    try {
+      setLoading(true);
+      const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+      const perfil = await obterPerfilUsuario(credential.user.uid);
+
+      if (!perfil) {
+        await signOut(auth);
+        return { success: false, message: "Perfil de usuário não encontrado." };
+      }
+
+      setUser(perfil);
+      return { success: true, user: perfil };
+    } catch (error) {
+      const mensagens = {
+        "auth/user-not-found":     "E-mail não cadastrado.",
+        "auth/wrong-password":     "Senha incorreta.",
+        "auth/invalid-credential": "E-mail ou senha inválidos.",
+        "auth/too-many-requests":  "Muitas tentativas. Aguarde e tente novamente.",
+        "auth/user-disabled":      "Esta conta foi desativada.",
+      };
+      return {
+        success: false,
+        message: mensagens[error.code] || "Erro ao fazer login. Tente novamente.",
+      };
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const unblockStudent = (studentId) => {
-    const users = getStoredUsers();
-    saveUsers(
-      users.map((candidate) =>
-        candidate.id === studentId ? { ...candidate, absences: 0, blocked: false } : candidate
-      )
-    );
+  // ── Cadastro de Aluno ─────────────────────────────────────────────────────
+  const registerStudent = async ({ nome, email, password, matriculaID, curso }) => {
+    if (!validarEmailIFSC(email)) {
+      return { success: false, message: MENSAGEM_DOMINIO_INVALIDO };
+    }
+
+    try {
+      setLoading(true);
+      const credential = await createUserWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password
+      );
+
+      const perfilAluno = {
+        nome: nome.trim(),
+        email: email.trim().toLowerCase(),
+        matriculaID: matriculaID.trim(),
+        curso: curso.trim(),
+        perfil: "aluno",
+      };
+
+      await salvarPerfilUsuario(credential.user.uid, perfilAluno);
+      const perfilSalvo = await obterPerfilUsuario(credential.user.uid);
+      setUser(perfilSalvo);
+
+      return { success: true, user: perfilSalvo };
+    } catch (error) {
+      const mensagens = {
+        "auth/email-already-in-use": "Este e-mail já está cadastrado.",
+        "auth/weak-password":         "A senha deve ter pelo menos 6 caracteres.",
+        "auth/invalid-email":         "Formato de e-mail inválido.",
+      };
+      return {
+        success: false,
+        message: mensagens[error.code] || "Erro ao criar conta. Tente novamente.",
+      };
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const getStudents = () =>
-    getStoredUsers()
-      .filter((candidate) => candidate.role === 'student')
-      .map(toPublicUser);
+  // ── Criação de Admin ──────────────────────────────────────────────────────
+  const createAdminAccess = async ({ nome, email, password, matriculaID }) => {
+    if (!validarEmailIFSC(email)) {
+      return { success: false, message: MENSAGEM_DOMINIO_INVALIDO };
+    }
 
-  const logout = () => {
-    localStorage.removeItem(STORAGE_KEYS.session);
+    try {
+      const credential = await createUserWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password
+      );
+
+      await salvarPerfilUsuario(credential.user.uid, {
+        nome: nome.trim(),
+        email: email.trim().toLowerCase(),
+        matriculaID: matriculaID?.trim() || "",
+        curso: "Administração",
+        perfil: "admin",
+      });
+
+      return { success: true, message: "Acesso administrativo criado." };
+    } catch (error) {
+      const mensagens = {
+        "auth/email-already-in-use": "Este e-mail já está cadastrado.",
+        "auth/weak-password":         "A senha deve ter pelo menos 6 caracteres.",
+      };
+      return {
+        success: false,
+        message: mensagens[error.code] || "Erro ao criar admin.",
+      };
+    }
+  };
+
+  // ── Atualizar Perfil ──────────────────────────────────────────────────────
+  const updateProfile = async (profileData) => {
+    if (!firebaseUser) return false;
+    try {
+      await atualizarPerfilUsuario(firebaseUser.uid, profileData);
+      setUser((prev) => ({ ...prev, ...profileData }));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // ── Recuperação de Senha ──────────────────────────────────────────────────
+  const requestPasswordReset = async (email) => {
+    if (!validarEmailIFSC(email)) {
+      return { success: false, message: MENSAGEM_DOMINIO_INVALIDO };
+    }
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.code === "auth/user-not-found"
+            ? "E-mail não encontrado."
+            : "Erro ao enviar e-mail de recuperação.",
+      };
+    }
+  };
+
+  // ── Logout ────────────────────────────────────────────────────────────────
+  const logout = async () => {
+    await signOut(auth);
     setUser(null);
+    setFirebaseUser(null);
   };
 
   const value = {
     user,
+    firebaseUser,
+    loading,
     login,
     logout,
-    loading,
-    updateProfile,
-    changePassword,
-    requestPasswordReset,
     registerStudent,
     createAdminAccess,
-    registerAbsence,
-    unblockStudent,
-    getStudents,
+    updateProfile,
+    requestPasswordReset,
+    validarEmailIFSC,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
