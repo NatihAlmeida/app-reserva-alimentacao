@@ -17,6 +17,14 @@ const getStoredNotifications = () => {
 export const NotificationProvider = ({ children }) => {
   const { user } = useContext(AuthContext);
   const [notifications, setNotifications] = useState(getStoredNotifications);
+  const [browserNotificationStatus, setBrowserNotificationStatus] = useState(() => {
+    if (typeof Notification === 'undefined') return 'unsupported';
+    return Notification.permission;
+  });
+  const [isTabActive, setIsTabActive] = useState(() => {
+    if (typeof document === 'undefined') return true;
+    return document.visibilityState === 'visible' && document.hasFocus();
+  });
 
   const visibleNotifications = useMemo(
     () =>
@@ -38,14 +46,35 @@ export const NotificationProvider = ({ children }) => {
   }, [notifications]);
 
   useEffect(() => {
-    if (
-      typeof Notification !== 'undefined' &&
-      Notification.permission !== 'granted' &&
-      Notification.permission !== 'denied'
-    ) {
-      Notification.requestPermission();
-    }
+    const updateTabActivity = () => {
+      setIsTabActive(document.visibilityState === 'visible' && document.hasFocus());
+    };
+
+    updateTabActivity();
+    document.addEventListener('visibilitychange', updateTabActivity);
+    window.addEventListener('focus', updateTabActivity);
+    window.addEventListener('blur', updateTabActivity);
+
+    return () => {
+      document.removeEventListener('visibilitychange', updateTabActivity);
+      window.removeEventListener('focus', updateTabActivity);
+      window.removeEventListener('blur', updateTabActivity);
+    };
   }, []);
+
+  const requestBrowserNotifications = async () => {
+    if (typeof Notification === 'undefined') {
+      setBrowserNotificationStatus('unsupported');
+      return 'unsupported';
+    }
+
+    // A permissao nativa e solicitada apenas por acao do admin logado.
+    if (user?.role !== 'admin') return Notification.permission;
+
+    const permission = await Notification.requestPermission();
+    setBrowserNotificationStatus(permission);
+    return permission;
+  };
 
   const addNotification = (message, type = 'info', audience = user?.role || 'student', options = {}) => {
     const newNotification = {
@@ -60,12 +89,18 @@ export const NotificationProvider = ({ children }) => {
 
     setNotifications((prev) => [newNotification, ...prev]);
 
+    const isForLoggedAdmin =
+      user?.role === 'admin' &&
+      audience === 'admin' &&
+      (!options.userId || options.userId === user.id);
     const shouldPush =
       typeof Notification !== 'undefined' &&
       Notification.permission === 'granted' &&
-      (audience === user?.role || options.userId === user?.id);
+      isForLoggedAdmin &&
+      !isTabActive;
 
     if (shouldPush) {
+      // O push visual so aparece em segundo plano, no estilo Google Agenda.
       new Notification('Cantina do Neném', {
         body: message,
         icon: '/favicon.svg',
@@ -103,6 +138,8 @@ export const NotificationProvider = ({ children }) => {
       value={{
         notifications: visibleNotifications,
         unreadCount,
+        browserNotificationStatus,
+        requestBrowserNotifications,
         addNotification,
         markAsRead,
         markAllAsRead,
