@@ -14,40 +14,48 @@ import ProtectedRoute from './components/UI/ProtectedRoute';
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
-        <NotificationProvider>
-          <ProductProvider>
+    // 🚀 CORREÇÃO 1: O AuthProvider agora é o topo absoluto, envolvendo o Router e os outros Contextos!
+    <AuthProvider>
+      <NotificationProvider>
+        <ProductProvider>
+          <Router>
             <Routes>
               <Route path="/" element={<Navigate to="/login" />} />
               <Route path="/login" element={<Login />} />
               <Route path="/cadastro" element={<Register />} />
               <Route path="/admin-setup" element={<AdminSetup />} />
               <Route path="/esqueci-senha" element={<ForgotPassword />} />
+              
+              {/* CORREÇÃO 2: Alterado de 'student' para 'aluno' para bater com seu perfil Firestore */}
               <Route
                 path="/dashboard"
                 element={
-                  <ProtectedRoute allowedRoles={['student']}>
+                  <ProtectedRoute allowedRoles={['aluno']}>
                     <StudentDashboard />
                   </ProtectedRoute>
                 }
               />
+              
+              {/* CORREÇÃO 3: Alterado de 'student' para 'aluno' */}
               <Route
                 path="/minhas-reservas"
                 element={
-                  <ProtectedRoute allowedRoles={['student']}>
+                  <ProtectedRoute allowedRoles={['aluno']}>
                     <MinhasReservas />
                   </ProtectedRoute>
                 }
               />
+              
+              {/* CORREÇÃO 4: Garantido allowedRoles={['admin']} para alinhar com o ProtectedRoute atualizado */}
               <Route
                 path="/admin"
                 element={
-                  <ProtectedRoute adminOnly>
+                  <ProtectedRoute allowedRoles={['admin']}>
                     <AdminDashboard />
                   </ProtectedRoute>
                 }
               />
+              
               <Route
                 path="/configuracoes"
                 element={
@@ -56,12 +64,13 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              
               <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
-          </ProductProvider>
-        </NotificationProvider>
-      </AuthProvider>
-    </Router>
+          </Router>
+        </ProductProvider>
+      </NotificationProvider>
+    </AuthProvider>
   );
 }
 

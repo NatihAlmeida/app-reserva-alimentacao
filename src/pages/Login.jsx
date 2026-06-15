@@ -15,7 +15,6 @@ export default function Login() {
     e.preventDefault();
     setError("");
 
-    // Validação de domínio IFSC — bloqueio antes de qualquer chamada Firebase
     if (!validarEmailIFSC(email)) {
       setError(
         "Acesso restrito. Use seu e-mail institucional do IFSC " +
@@ -32,8 +31,19 @@ export default function Login() {
     const result = await login(email, password);
 
     if (result.success) {
-      const isAdmin = result.user?.perfil === "admin";
-      navigate(isAdmin ? "/admin" : "/dashboard", { replace: true });
+      const perfilDoBanco = result.user?.perfil; // 'aluno' ou 'admin'
+      
+      // Mapeia a role visual com o perfil salvo em português no Firestore
+      const roleConvertida = role === "student" ? "aluno" : "admin";
+
+      // 🚀 SEGURANÇA: Se o usuário tentou entrar como Admin, mas o perfil dele no banco é Aluno (ou vice-versa)
+      if (perfilDoBanco !== roleConvertida) {
+        setError(`Acesso negado. Seu perfil cadastrado não corresponde a um ${role === 'student' ? 'Aluno' : 'Administrador'}.`);
+        return;
+      }
+
+      // Se passou em tudo, redireciona para as rotas corretas
+      navigate(perfilDoBanco === "admin" ? "/admin" : "/dashboard", { replace: true });
     } else {
       setError(result.message);
     }

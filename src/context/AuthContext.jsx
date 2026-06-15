@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useEffect, useState } from "react";
+import { createContext, useEffect, useState, useContext } from "react"; // 💡 Adicionado useContext aqui
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -57,6 +57,7 @@ export const AuthProvider = ({ children }) => {
 
   // ── Login ─────────────────────────────────────────────────────────────────
   const login = async (email, password) => {
+    // 🛠️ CORREÇÃO: Estava "!use(email)", mudei para "!validarEmailIFSC(email)"
     if (!validarEmailIFSC(email)) {
       return { success: false, message: MENSAGEM_DOMINIO_INVALIDO };
     }
@@ -109,7 +110,7 @@ export const AuthProvider = ({ children }) => {
         email: email.trim().toLowerCase(),
         matriculaID: matriculaID.trim(),
         curso: curso.trim(),
-        perfil: "aluno",
+        perfil: "aluno", // Alinhado com a validação de rotas
       };
 
       await salvarPerfilUsuario(credential.user.uid, perfilAluno);
@@ -204,10 +205,14 @@ export const AuthProvider = ({ children }) => {
     setFirebaseUser(null);
   };
 
+  // 💡 Mapeamento de Role amigável para o ProtectedRoute identificar se é aluno/admin
+  const role = user?.perfil || null;
+
   const value = {
     user,
     firebaseUser,
     loading,
+    role, // 💡 Adicionado a role aqui para facilitar o ProtectedRoute
     login,
     logout,
     registerStudent,
@@ -218,4 +223,11 @@ export const AuthProvider = ({ children }) => {
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth deve ser usado dentro de um AuthProvider");
+  }
+  return context;
 };

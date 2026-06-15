@@ -1,19 +1,14 @@
-import { useContext } from "react";
-import { Navigate } from "react-router-dom";
-import { AuthContext } from "../../context/AuthContext";
+import React from 'react';
+import { Navigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext'; // Ajuste o caminho se necessário
 
-/**
- * Rota protegida por autenticação Firebase.
- * - adminOnly: requer perfil === "admin"
- * - allowedRoles: array de perfis permitidos (ex: ["aluno"])
- */
-export default function ProtectedRoute({ children, adminOnly = false, allowedRoles }) {
-  const { user, loading } = useContext(AuthContext);
+export default function ProtectedRoute({ children, allowedRoles }) {
+  const { user, loading, role } = useAuth();
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary-700 border-t-transparent" />
+      <div className="flex justify-center items-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
       </div>
     );
   }
@@ -22,13 +17,9 @@ export default function ProtectedRoute({ children, adminOnly = false, allowedRol
     return <Navigate to="/login" replace />;
   }
 
-  if (adminOnly && user.perfil !== "admin") {
-    return <Navigate to="/dashboard" replace />;
-  }
-
-  if (allowedRoles && !allowedRoles.includes(user.perfil)) {
-    const destino = user.perfil === "admin" ? "/admin" : "/dashboard";
-    return <Navigate to={destino} replace />;
+  // Correção: Agora verifica se o perfil condiz com 'aluno' ou 'admin' mapeado do banco
+  if (allowedRoles && !allowedRoles.includes(role)) {
+    return <Navigate to={role === 'admin' ? '/admin' : '/'} replace />;
   }
 
   return children;

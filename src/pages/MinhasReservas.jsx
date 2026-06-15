@@ -1,199 +1,142 @@
-import { useContext } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FaCalendarAlt, FaCheckCircle, FaClock, FaRegCalendarAlt } from 'react-icons/fa';
-import { AuthContext } from '../context/AuthContext';
-import { NotificationContext } from '../context/NotificationContext';
-import { ProductContext, canCancelReservation } from '../context/ProductContext';
-import Header from '../components/UI/Header';
-
-const formatDate = (value) => {
-  if (!value) return 'Data não informada';
-  const [year, month, day] = value.split('-');
-  if (!year || !month || !day) return value;
-  return `${day}/${month}/${year}`;
-};
-
-const statusLabels = {
-  confirmed: 'Confirmada',
-  ready: 'Pronto para retirar',
-  completed: 'Retirada',
-  cancelled: 'Cancelada',
-  not_picked_up: 'Não retirada',
-  expired: 'Expirada',
-  blocked: 'Bloqueada',
-};
-
-const statusClasses = {
-  confirmed: 'bg-emerald-100 text-emerald-800',
-  ready: 'bg-green-100 text-green-800',
-  completed: 'bg-slate-100 text-slate-700',
-  cancelled: 'bg-red-100 text-red-700',
-  not_picked_up: 'bg-orange-100 text-orange-800',
-  expired: 'bg-orange-100 text-orange-800',
-  blocked: 'bg-red-100 text-red-800',
-};
+import React, { useEffect, useState } from 'react';
+import { db } from '../firebase/config'; // Ajuste o caminho do seu firebase
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { useAuth } from '../context/AuthContext';
 
 export default function MinhasReservas() {
-  const { reservations, cancelReservation } = useContext(ProductContext);
-  const { user } = useContext(AuthContext);
-  const { addNotification } = useContext(NotificationContext);
-  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [reservas, setReservas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [mensagem, setMensagem] = useState({ tipo: '', texto: '' });
 
-  const myReservations = reservations.filter((reservation) => reservation.studentId === user?.id);
-  const activeReservations = myReservations.filter(
-    (reservation) => !['cancelled', 'completed', 'not_picked_up'].includes(reservation.status)
-  );
-  const completedReservations = myReservations.filter((reservation) =>
-    ['completed', 'cancelled', 'not_picked_up'].includes(reservation.status)
-  );
+  useEffect(() => {
+    async function buscarReservas() {
+      if (!user?.uid) return;
+      try {
+        const q = query(collection(db, 'pedidos'), where('alunoID', '==', user.uid));
+        const querySnapshot = await getDocs(q);
+        const listaReservas = [];
+        querySnapshot.forEach((doc) => {
+          listaReservas.push({ id: doc.id, ...doc.data() });
+        });
+        // Ordena por criação mais recente
+        listaReservas.sort((a, b) => b.criadoEm?.seconds - a.criadoEm?.seconds);
+        setReservas(listaReservas);
+      } catch (error) {
+        console.error("Erro ao buscar pedidos:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    buscarReservas();
+  }, [user]);
 
-  const handleCancel = (reservation) => {
-    const result = cancelReservation(reservation.id);
+  // Validação da regra das 18h do dia anterior
+  const podeCancelar = (dataString) => {
+    try {
+      // dataString esperado: "dd-mm-yyyy"
+      const [dia, mes, ano] = dataString.split('-').map(Number);
+      const dataReserva = new Date(ano, mes - 1, dia);
+      
+      const agora = new Date();
+      const hoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
 
-    if (!result.success) {
-      addNotification(result.message, 'warning', 'student', { userId: user?.id });
+      // Se o dia da reserva já passou ou é hoje, não pode mais cancelar por esta regra estrita
+      if (hoje >= dataReserva) {
+        return false;
+      }
+
+      // Se for o dia anterior à reserva, verifica se já passou das 18h
+      const limiteCancelamento = new Date(dataReserva);
+      limiteCancelamento.setDate(limiteCancelamento.getDate() - 1);
+      limiteCancelamento.setHours(18, 0, 0, 0);
+
+      return agora < limiteCancelamento;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  const lidarComCancelamento = async (pedidoId, dataReserva) => {
+    if (!podeCancelar(dataReserva)) {
+      setMensagem({ tipo: 'erro', texto: 'Cancelamentos só são permitidos até as 18h do dia anterior à reserva.' });
       return;
     }
 
-    addNotification('Reserva cancelada com sucesso.', 'success', 'student', { userId: user?.id });
-    addNotification(
-      `${user?.name || 'Aluno'} cancelou a reserva de ${reservation.productName}.`,
-      'warning',
-      'admin'
-    );
+    if (window.confirm("Tem certeza que deseja cancelar esta reserva?")) {
+      try {
+        const pedidoRef = doc(db, 'pedidos', pedidoId);
+        await updateDoc(pedidoRef, { status: 'cancelado' });
+        
+        setReservas(prev => prev.map(res => res.id === pedidoId ? { ...res, status: 'cancelado' } : res));
+        setMensagem({ tipo: 'sucesso', texto: 'Reserva cancelada com sucesso.' });
+      } catch (error) {
+        setMensagem({ tipo: 'erro', texto: 'Erro ao tentar cancelar a reserva. Tente novamente.' });
+      }
+    }
   };
 
-  return (
-    <>
-      <Header title="Minhas Reservas" />
-
-      <main className="container-custom py-6 pb-24">
-        {user?.blocked && (
-          <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
-            Your account has been temporarily blocked. Please contact the cafeteria.
-          </div>
-        )}
-
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-primary-700">Acompanhe sua retirada</h2>
-          <p className="text-gray-500">Gerencie suas reservas ativas e histórico</p>
-        </div>
-
-        <section className="mb-8">
-          <h3 className="mb-3 flex items-center text-lg font-semibold text-gray-700">
-            <FaRegCalendarAlt className="mr-2 text-primary-500" />
-            Reservas Ativas
-          </h3>
-
-          {activeReservations.length === 0 ? (
-            <div className="rounded-2xl bg-white p-8 text-center shadow-sm">
-              <p className="text-gray-500">Nenhuma reserva ativa no momento</p>
-              <button
-                type="button"
-                onClick={() => navigate('/dashboard')}
-                className="mt-3 font-semibold text-primary-600 hover:text-primary-700"
-              >
-                Fazer nova reserva →
-              </button>
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {activeReservations.map((reservation) => (
-                <ReservationCard
-                  key={reservation.id}
-                  reservation={reservation}
-                  onCancel={() => handleCancel(reservation)}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {completedReservations.length > 0 && (
-          <section>
-            <h3 className="mb-3 text-lg font-semibold text-gray-700">Histórico</h3>
-            <div className="space-y-2">
-              {completedReservations.map((reservation) => (
-                <div
-                  key={reservation.id}
-                  className="flex flex-col gap-3 rounded-xl bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div>
-                    <p className="font-bold text-gray-900">{reservation.productName}</p>
-                    <p className="text-xs text-gray-500">
-                      {formatDate(reservation.pickupDate)} às{' '}
-                      {reservation.pickupTime || reservation.time}
-                    </p>
-                  </div>
-                  <span
-                    className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${
-                      statusClasses[reservation.status] || 'bg-gray-100 text-gray-800'
-                    }`}
-                  >
-                    {statusLabels[reservation.status] || 'Confirmada'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-      </main>
-    </>
-  );
-}
-
-function ReservationCard({ reservation, onCancel }) {
-  const cancellable = canCancelReservation(reservation);
+  if (loading) return <div className="p-8 text-center">Carregando suas reservas...</div>;
 
   return (
-    <article className="rounded-2xl border-l-4 border-primary-600 bg-white p-4 shadow-md">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h4 className="text-lg font-bold text-gray-900">{reservation.productName}</h4>
-          <div className="mt-2 space-y-1 text-sm text-gray-500">
-            <p className="flex items-center gap-2">
-              <FaCalendarAlt size={12} />
-              Data: {formatDate(reservation.pickupDate)}
-            </p>
-            <p className="flex items-center gap-2">
-              <FaClock size={12} />
-              Horário: {reservation.pickupTime || reservation.time}
-            </p>
-          </div>
-          <p className="mt-2 text-sm text-gray-500">
-            {reservation.quantity} {reservation.quantity === 1 ? 'unidade' : 'unidades'}
-          </p>
-        </div>
-
-        <span
-          className={`inline-flex shrink-0 items-center rounded-full px-2 py-1 text-xs font-bold ${
-            statusClasses[reservation.status] || 'bg-gray-100 text-gray-800'
-          }`}
-        >
-          {statusLabels[reservation.status] || 'Confirmada'}
-        </span>
-      </div>
-
-      {reservation.status === 'confirmed' && (
-        <div className="mt-3 border-t pt-3">
-          <p className="flex items-center text-sm font-semibold text-emerald-700">
-            <FaCheckCircle className="mr-1" /> Reserva confirmada.
-          </p>
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={!cancellable}
-            className="mt-3 h-10 rounded-xl bg-red-50 px-4 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
-          >
-            Cancelar reserva
-          </button>
-          {!cancellable && (
-            <p className="mt-2 text-xs font-semibold text-orange-700">
-              Cancellation is only available until 12:00 PM on the reservation day.
-            </p>
-          )}
+    <div className="max-w-4xl mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-6 text-emerald-800">Minhas Reservas</h1>
+      
+      {mensagem.texto && (
+        <div className={`p-4 mb-4 rounded-md ${mensagem.tipo === 'sucesso' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+          {mensagem.texto}
         </div>
       )}
-    </article>
+
+      {reservas.length === 0 ? (
+        <p className="text-gray-600">Você ainda não realizou nenhum pedido de refeição.</p>
+      ) : (
+        <div className="space-y-4">
+          {reservas.map((reserva) => (
+            <div key={reserva.id} className="border border-gray-200 rounded-lg p-5 bg-white shadow-sm">
+              <div className="flex justify-between items-start border-b pb-3 mb-3">
+                <div>
+                  <p className="text-sm text-gray-500">Data de Entrega: <span className="font-semibold text-gray-700">{reserva.data} às {reserva.hora}</span></p>
+                  <p className="text-xs text-gray-400">ID do Pedido: {reserva.id}</p>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${
+                  reserva.status === 'pendente' ? 'bg-yellow-100 text-yellow-800' :
+                  reserva.status === 'preparando' ? 'bg-blue-100 text-blue-800' :
+                  reserva.status === 'pronto' ? 'bg-indigo-100 text-indigo-800' :
+                  reserva.status === 'entregue' ? 'bg-green-100 text-green-800' :
+                  'bg-gray-100 text-gray-800'
+                }`}>
+                  {reserva.status}
+                </span>
+              </div>
+
+              <div className="mb-4">
+                <p className="font-medium text-gray-700 mb-2">Itens Solicitados:</p>
+                <ul className="list-disc pl-5 space-y-1 text-sm text-gray-600">
+                  {reserva.produtos?.map((prod, index) => (
+                    <li key={index}>
+                      {prod.nome} (x{prod.Quantidade}) - R$ {prod.Valor?.toFixed(2)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="flex justify-between items-center pt-2">
+                <p className="text-lg font-bold text-emerald-700">Total: R$ {reserva.total?.toFixed(2)}</p>
+                
+                {reserva.status === 'pendente' && podeCancelar(reserva.data) && (
+                  <button
+                    onClick={() => lidarComCancelamento(reserva.id, reserva.data)}
+                    className="bg-red-500 hover:bg-red-600 text-white font-medium py-1.5 px-4 rounded transition-colors text-sm"
+                  >
+                    Cancelar Reserva
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

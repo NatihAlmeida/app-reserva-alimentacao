@@ -37,13 +37,12 @@ const normalizarProduto = (firestoreDoc) => ({
   produtosID: firestoreDoc.produtosID,
   name: firestoreDoc.nome,
   nome: firestoreDoc.nome,
-  price: firestoreDoc.preco || 0,
-  preco: firestoreDoc.preco || 0,
+  price: firestoreDoc.preco || firestoreDoc.Valor || 0,
+  preco: firestoreDoc.preco || firestoreDoc.Valor || 0,
   image: firestoreDoc.imagemUrl || "",
   imagemUrl: firestoreDoc.imagemUrl || "",
-  status: firestoreDoc["disponível"] ? "active" : "inactive",
-  disponivel: firestoreDoc["disponível"] ?? true,
-  // Alergênicos como array de strings (para o FilterBar)
+  status: firestoreDoc["disponível"] || firestoreDoc.disponivel ? "active" : "inactive",
+  disponivel: firestoreDoc["disponível"] ?? firestoreDoc.disponivel ?? true,
   dietary: [
     firestoreDoc.temGlutem && "CONTÉM GLÚTEN",
     firestoreDoc.temLactose && "CONTÉM LACTOSE",
@@ -62,8 +61,8 @@ const normalizarProduto = (firestoreDoc) => ({
 
 // Converte pedido do Firestore para o formato legível pelo frontend
 const normalizarPedido = (firestoreDoc) => ({
-  id: firestoreDoc.pedidosID,
-  pedidosID: firestoreDoc.pedidosID,
+  id: firestoreDoc.pedidosID || firestoreDoc.id,
+  pedidosID: firestoreDoc.pedidosID || firestoreDoc.id,
   studentId: firestoreDoc.alunoID,
   studentName: firestoreDoc.alunoNome,
   alunoID: firestoreDoc.alunoID,
@@ -77,14 +76,25 @@ const normalizarPedido = (firestoreDoc) => ({
 });
 
 export const ProductProvider = ({ children }) => {
-  const { user } = useContext(AuthContext);
+  // 🚀 Puxamos o user e o estado de loading do AuthContext
+  const { user, loading: authLoading } = useContext(AuthContext);
   const [products, setProducts] = useState([]);
   const [reservations, setReservations] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [loadingReservations, setLoadingReservations] = useState(false);
 
-  // ── Carrega produtos ao montar ──────────────────────────────────────────
+  // ── Carrega produtos de forma inteligente ────────────────────────────────
   useEffect(() => {
+    // 💡 TRAVA: Se o Auth ainda está processando se o usuário tá logado ou não, espera.
+    if (authLoading) return;
+
+    // Se as regras do Firestore para produtos exigem autenticação, barramos requisições de usuários deslogados aqui
+    if (!user) {
+      setProducts([]);
+      setLoadingProducts(false);
+      return;
+    }
+
     const carregarProdutos = async () => {
       setLoadingProducts(true);
       try {
@@ -101,10 +111,12 @@ export const ProductProvider = ({ children }) => {
     };
 
     carregarProdutos();
-  }, [user?.perfil]);
+  }, [user, authLoading]); // Adicionado dependências corretas
 
-  // ── Carrega pedidos quando o usuário está logado ────────────────────────
+  // ── Carrega pedidos baseados na UID/AlunoID correta ─────────────────────
   useEffect(() => {
+    if (authLoading) return;
+
     if (!user) {
       setReservations([]);
       return;
@@ -116,7 +128,7 @@ export const ProductProvider = ({ children }) => {
         const raw =
           user.perfil === "admin"
             ? await buscarTodosPedidos()
-            : await buscarPedidosAluno(user.matriculaID);
+            : await buscarPedidosAluno(user.uid); // 💡 CORREÇÃO: Busca por user.uid (alunoID no Firestore), não matriculaID
         setReservations(raw.map(normalizarPedido));
       } catch (error) {
         console.error("Erro ao carregar pedidos:", error);
@@ -126,7 +138,7 @@ export const ProductProvider = ({ children }) => {
     };
 
     carregarPedidos();
-  }, [user]);
+  }, [user, authLoading]);
 
   // ── CRUD Produtos (admin) ───────────────────────────────────────────────
   const addProduct = async (produto) => {
@@ -186,11 +198,12 @@ export const ProductProvider = ({ children }) => {
         0
       );
 
+      // Envia os dados para a função de integração com o banco
       const pedidoID = await criarPedidoCantina(user, cartItems, total);
 
       const novoPedido = normalizarPedido({
         pedidosID: pedidoID,
-        alunoID: user.matriculaID,
+        alunoID: user.uid, // Mapeado com a UID real do Auth mapeada no Firestore
         alunoNome: user.nome,
         produtos: cartItems.map((item) => ({
           produtoID: item.produtosID || item.id,
@@ -212,7 +225,7 @@ export const ProductProvider = ({ children }) => {
     }
   };
 
-  // ── Atualizar status (admin) ────────────────────────────────────────────
+  // ── Atualizar status (admin / cancelamento de aluno) ────────────────────
   const updateReservationStatus = async (pedidosID, novoStatus) => {
     try {
       await atualizarStatusPedido(pedidosID, novoStatus);
@@ -237,7 +250,7 @@ export const ProductProvider = ({ children }) => {
         updateProduct,
         deleteProduct,
         addReservation,
-        updateReservationStatus,
+        updateReservationStatus, // Fornece a função de alteração que MinhasReservas e Admin usam!
         isBeforeReservationDeadline,
       }}
     >
