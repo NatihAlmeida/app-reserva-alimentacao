@@ -1,5 +1,6 @@
 import { useContext, useMemo, useState } from 'react';
 import {
+  FaBan,
   FaBell,
   FaBox,
   FaChartLine,
@@ -7,9 +8,11 @@ import {
   FaClock,
   FaSearch,
   FaStore,
+  FaTimesCircle,
   FaUnlock,
   FaUserSlash,
   FaUsers,
+  FaIdCard,
 } from 'react-icons/fa';
 import { AuthContext } from '../../context/AuthContext';
 import { NotificationContext } from '../../context/NotificationContext';
@@ -17,6 +20,12 @@ import { ProductContext } from '../../context/ProductContext';
 import Sidebar, { AdminMobileNav } from './Sidebar';
 import ProductForm from './ProductForm';
 import ProductList from './ProductList';
+import { cancelarPedido } from '../../firebase/pedidos';
+
+const CANCEL_REASONS = [
+  { value: 'fora_escala', label: 'Fora da escala de horário' },
+  { value: 'material_indisponivel', label: 'Material indisponível' },
+];
 
 const statusLabels = {
   pendente: 'Pendente',
@@ -47,35 +56,34 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const { products, reservations, updateReservationStatus, loadingProducts, loadingReservations } = useContext(ProductContext);
   const { addNotification, notifications } = useContext(NotificationContext);
-  const { getStudents, unblockStudent, registerAbsence } = useContext(AuthContext);
+  const { user, getStudents, unblockStudent, registerAbsence, refreshStudents } = useContext(AuthContext);
   const [reservationSearch, setReservationSearch] = useState('');
   const [reservationStatus, setReservationStatus] = useState('all');
   const [page, setPage] = useState(1);
+  const [cancelModal, setCancelModal] = useState(null); // { reservation }
+  const [cancelReason, setCancelReason] = useState('fora_escala');
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   const students = getStudents ? getStudents() : [];
-  
-  const stats = useMemo(() => {
-    return {
-      activeProducts: products.filter((product) => product.disponivel || product.status === 'active').length,
-      totalReservations: reservations.length,
-      confirmedReservations: reservations.filter((r) => ['pendente', 'preparando', 'pronto'].includes(r.status)).length,
-      revenue: reservations
-        .filter((r) => !['cancelled', 'not_picked_up'].includes(r.status))
-        .reduce((sum, r) => sum + (Number(r.total) || 0), 0),
-      pendingPickups: reservations.filter((r) => r.status === 'pronto').length,
-      blockedStudents: students.filter((student) => student.blocked).length,
-    };
-  }, [products, reservations, students]);
+
+  const stats = useMemo(() => ({
+    activeProducts: products.filter((p) => p.disponivel || p.status === 'active').length,
+    totalReservations: reservations.length,
+    confirmedReservations: reservations.filter((r) => ['pendente', 'preparando', 'pronto'].includes(r.status)).length,
+    revenue: reservations
+      .filter((r) => !['cancelled', 'not_picked_up'].includes(r.status))
+      .reduce((sum, r) => sum + (Number(r.total) || 0), 0),
+    pendingPickups: reservations.filter((r) => r.status === 'pronto').length,
+    blockedStudents: students.filter((s) => s.blocked).length,
+  }), [products, reservations, students]);
 
   const filteredReservations = useMemo(() => {
     const term = reservationSearch.toLowerCase();
-    return reservations.filter((reservation) => {
-      // Procura nos produtos internos do array mapeado do Firestore
-      const matchesProduct = reservation.produtos?.some(p => p.nome?.toLowerCase().includes(term));
-      const matchesStudent = reservation.alunoNome?.toLowerCase().includes(term);
-      
+    return reservations.filter((r) => {
+      const matchesProduct = r.produtos?.some((p) => p.nome?.toLowerCase().includes(term));
+      const matchesStudent = r.alunoNome?.toLowerCase().includes(term);
       const matchesText = matchesProduct || matchesStudent;
-      const matchesStatus = reservationStatus === 'all' || reservation.status === reservationStatus;
+      const matchesStatus = reservationStatus === 'all' || r.status === reservationStatus;
       return matchesText && matchesStatus;
     });
   }, [reservations, reservationSearch, reservationStatus]);
@@ -84,21 +92,99 @@ export default function AdminDashboard() {
   const paginatedReservations = filteredReservations.slice((page - 1) * pageSize, page * pageSize);
   const totalPages = Math.max(1, Math.ceil(filteredReservations.length / pageSize));
 
-  const markNotPickedUp = (reservation) => {
+  const markNotPickedUp = async (reservation) => {
     updateReservationStatus(reservation.pedidosID || reservation.id, 'not_picked_up');
-    if (registerAbsence) registerAbsence(reservation.alunoID);
-    addNotification(`${reservation.alunoNome} não retirou o pedido.`, 'warning', 'admin');
+    const resultado = await registerAbsence(reservation.alunoID);
+
+    const adminId = user?.uid || user?.id;
+    addNotification(
+      `${reservation.alunoNome} não retirou o pedido. (Ausência registrada)`,
+      'warning',
+      'admin',
+      { adminId }
+    );
+
+    // Notifica o aluno
+    addNotification(
+      `Seu pedido foi marcado como não retirado. Você possui ${resultado.absences} ausência(s).`,
+      'warning',
+      'aluno',
+      { userId: reservation.alunoID }
+    );
+
+    if (resultado.blocked) {
+      addNotification(
+        `${reservation.alunoNome} foi bloqueado após 2 ausências.`,
+        'error',
+        'admin',
+        { adminId }
+      );
+      addNotification(
+        'Seu acesso foi bloqueado devido a 2 ausências. Solicite desbloqueio ao administrador.',
+        'error',
+        'aluno',
+        { userId: reservation.alunoID }
+      );
+    }
   };
 
   const markPickedUp = (reservation) => {
     updateReservationStatus(reservation.pedidosID || reservation.id, 'entregue');
-    addNotification(`Reserva de ${reservation.alunoNome} marcada como entregue.`, 'success', 'admin');
+    const adminId = user?.uid || user?.id;
+    addNotification(`Reserva de ${reservation.alunoNome} marcada como entregue.`, 'success', 'admin', { adminId });
   };
 
-  const handleUnblock = (student) => {
+  const openCancelModal = (reservation) => {
+    setCancelModal({ reservation });
+    setCancelReason('fora_escala');
+  };
+
+  const handleCancelReservation = async () => {
+    if (!cancelModal) return;
+    setCancelLoading(true);
+    const { reservation } = cancelModal;
+    const idPedido = reservation.pedidosID || reservation.id;
+    const reasonLabel = CANCEL_REASONS.find((r) => r.value === cancelReason)?.label || cancelReason;
+
+    try {
+      await cancelarPedido(idPedido, reasonLabel);
+      updateReservationStatus(idPedido, 'cancelled');
+
+      const adminId = user?.uid || user?.id;
+      // Notificação para o admin
+      addNotification(
+        `Pedido de ${reservation.alunoNome} cancelado: ${reasonLabel}.`,
+        'info',
+        'admin',
+        { adminId }
+      );
+      // Notificação para o aluno
+      addNotification(
+        `Seu pedido foi cancelado. Motivo: ${reasonLabel}.`,
+        'error',
+        'aluno',
+        { userId: reservation.alunoID }
+      );
+
+      setCancelModal(null);
+    } catch (err) {
+      console.error('Erro ao cancelar pedido:', err);
+    } finally {
+      setCancelLoading(false);
+    }
+  };
+
+  const handleUnblock = async (student) => {
     if (unblockStudent) {
-      unblockStudent(student.id);
-      addNotification(`${student.name} foi desbloqueado.`, 'success', 'admin');
+      await unblockStudent(student.id || student.uid);
+      const adminId = user?.uid || user?.id;
+      addNotification(`${student.nome || student.name} foi desbloqueado.`, 'success', 'admin', { adminId });
+      addNotification(
+        'Seu acesso foi desbloqueado pelo administrador. Você pode fazer login novamente.',
+        'success',
+        'aluno',
+        { userId: student.id || student.uid }
+      );
     }
   };
 
@@ -119,13 +205,14 @@ export default function AdminDashboard() {
           <div className="mb-7 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-bold uppercase text-primary-700">Área administrativa</p>
-              <h1 className="text-2xl font-extrabold text-gray-900 sm:text-3xl">
-                Painel Administrativo
-              </h1>
+              <h1 className="text-2xl font-extrabold text-gray-900 sm:text-3xl">Painel Administrativo</h1>
             </div>
             <button
               type="button"
-              onClick={() => addNotification('Central administrativa sincronizada.', 'info', 'admin')}
+              onClick={() => {
+                const adminId = user?.uid || user?.id;
+                addNotification('Central administrativa sincronizada.', 'info', 'admin', { adminId });
+              }}
               className="inline-flex h-11 w-fit items-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-primary-700 shadow-sm transition hover:bg-primary-50"
             >
               <FaBell />
@@ -148,9 +235,10 @@ export default function AdminDashboard() {
                 totalPages={totalPages}
                 onPickedUp={markPickedUp}
                 onNotPickedUp={markNotPickedUp}
+                onCancel={openCancelModal}
                 onStatusChange={updateReservationStatus}
               />
-              <StudentsPanel students={students} onUnblock={handleUnblock} />
+              <StudentsPanel students={students} onUnblock={handleUnblock} onRefresh={refreshStudents} />
             </section>
           )}
 
@@ -168,14 +256,63 @@ export default function AdminDashboard() {
               totalPages={totalPages}
               onPickedUp={markPickedUp}
               onNotPickedUp={markNotPickedUp}
+              onCancel={openCancelModal}
               onStatusChange={updateReservationStatus}
             />
           )}
-          {activeTab === 'students' && <StudentsPanel students={students} onUnblock={handleUnblock} />}
+          {activeTab === 'students' && (
+            <StudentsPanel students={students} onUnblock={handleUnblock} onRefresh={refreshStudents} fullPage />
+          )}
           {activeTab === 'notifications' && <AdminNotifications notifications={notifications} />}
           {activeTab === 'reports' && <Reports stats={stats} />}
         </main>
       </div>
+
+      {/* Modal de cancelamento */}
+      {cancelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-extrabold text-gray-900">Cancelar Pedido</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Pedido de <strong>{cancelModal.reservation.alunoNome}</strong>. Selecione o motivo do cancelamento:
+            </p>
+            <div className="mt-4 space-y-2">
+              {CANCEL_REASONS.map((r) => (
+                <label key={r.value} className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 p-3 transition ${cancelReason === r.value ? 'border-red-500 bg-red-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                  <input
+                    type="radio"
+                    name="cancelReason"
+                    value={r.value}
+                    checked={cancelReason === r.value}
+                    onChange={() => setCancelReason(r.value)}
+                    className="accent-red-600"
+                  />
+                  <span className="text-sm font-semibold text-gray-800">{r.label}</span>
+                </label>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-gray-400">O aluno receberá uma notificação com o motivo informado.</p>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setCancelModal(null)}
+                className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50 transition"
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelReservation}
+                disabled={cancelLoading}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700 transition disabled:opacity-60"
+              >
+                <FaBan />
+                {cancelLoading ? 'Cancelando...' : 'Confirmar Cancelamento'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -210,17 +347,8 @@ function StatCard({ label, value, icon }) {
 }
 
 function ReservationManager({
-  reservations,
-  search,
-  setSearch,
-  status,
-  setStatus,
-  page,
-  setPage,
-  totalPages,
-  onPickedUp,
-  onNotPickedUp,
-  onStatusChange,
+  reservations, search, setSearch, status, setStatus,
+  page, setPage, totalPages, onPickedUp, onNotPickedUp, onCancel, onStatusChange,
 }) {
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm sm:p-6">
@@ -235,27 +363,19 @@ function ReservationManager({
             <input
               type="search"
               value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               placeholder="Buscar aluno ou produto..."
               className="h-11 w-full rounded-xl border border-gray-200 pl-10 pr-3 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
             />
           </label>
           <select
             value={status}
-            onChange={(e) => {
-              setStatus(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => { setStatus(e.target.value); setPage(1); }}
             className="h-11 rounded-xl border border-gray-200 px-3 text-sm outline-none focus:border-primary-500"
           >
             <option value="all">Todos os Status</option>
             {Object.entries(statusLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
+              <option key={value} value={value}>{label}</option>
             ))}
           </select>
         </div>
@@ -271,6 +391,7 @@ function ReservationManager({
               reservation={reservation}
               onPickedUp={() => onPickedUp(reservation)}
               onNotPickedUp={() => onNotPickedUp(reservation)}
+              onCancel={() => onCancel(reservation)}
               onStatusChange={onStatusChange}
             />
           ))}
@@ -278,23 +399,11 @@ function ReservationManager({
       )}
 
       <div className="mt-5 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => setPage(Math.max(1, page - 1))}
-          disabled={page === 1}
-          className="btn-secondary disabled:opacity-50"
-        >
+        <button type="button" onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1} className="btn-secondary disabled:opacity-50">
           Anterior
         </button>
-        <span className="text-sm font-bold text-gray-500">
-          {page} / {totalPages}
-        </span>
-        <button
-          type="button"
-          onClick={() => setPage(Math.min(totalPages, page + 1))}
-          disabled={page === totalPages}
-          className="btn-secondary disabled:opacity-50"
-        >
+        <span className="text-sm font-bold text-gray-500">{page} / {totalPages}</span>
+        <button type="button" onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages} className="btn-secondary disabled:opacity-50">
           Próxima
         </button>
       </div>
@@ -302,9 +411,10 @@ function ReservationManager({
   );
 }
 
-function ReservationRow({ reservation, onPickedUp, onNotPickedUp, onStatusChange }) {
+function ReservationRow({ reservation, onPickedUp, onNotPickedUp, onCancel, onStatusChange }) {
   const currentStatus = reservation.status || 'pendente';
   const idPedido = reservation.pedidosID || reservation.id;
+  const canCancel = !['cancelled', 'entregue', 'not_picked_up'].includes(currentStatus);
 
   return (
     <article className="grid gap-4 rounded-2xl border border-gray-100 bg-gray-50 p-4 lg:grid-cols-[1fr_1.2fr_auto] lg:items-center">
@@ -315,15 +425,18 @@ function ReservationRow({ reservation, onPickedUp, onNotPickedUp, onStatusChange
           <p className="text-xs font-semibold text-gray-500">ID: {reservation.alunoID}</p>
         </div>
       </div>
-      
+
       <div className="space-y-1">
-        {reservation.produtos?.map((p, index) => (
-          <p key={index} className="text-sm font-bold text-gray-800">
+        {reservation.produtos?.map((p, i) => (
+          <p key={i} className="text-sm font-bold text-gray-800">
             {p.nome} <span className="text-gray-400 font-normal">({p.Quantidade || p.quantidade}x)</span>
           </p>
         ))}
         <p className="text-xs text-primary-700 font-bold">Total: {formatCurrency(reservation.total)}</p>
         <p className="text-xs text-gray-400">Agendado: {formatDate(reservation.data)} às {reservation.hora}</p>
+        {currentStatus === 'cancelled' && reservation.cancelledReason && (
+          <p className="text-xs font-semibold text-red-600">Motivo: {reservation.cancelledReason}</p>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 lg:justify-end">
@@ -353,39 +466,65 @@ function ReservationRow({ reservation, onPickedUp, onNotPickedUp, onStatusChange
             </button>
           </>
         )}
+
+        {canCancel && (
+          <button type="button" onClick={onCancel} className="inline-flex items-center gap-1 bg-white border border-red-200 text-red-600 rounded-xl px-3 py-1.5 text-xs font-bold hover:bg-red-50 transition">
+            <FaTimesCircle /> Cancelar
+          </button>
+        )}
       </div>
     </article>
   );
 }
 
-function StudentsPanel({ students, onUnblock }) {
+function StudentsPanel({ students, onUnblock, onRefresh, fullPage = false }) {
+  const [search, setSearch] = useState('');
+
+  const filtered = useMemo(() => {
+    const term = search.toLowerCase();
+    if (!term) return students;
+    return students.filter(
+      (s) =>
+        (s.nome || s.name || '').toLowerCase().includes(term) ||
+        (s.matriculaID || '').toLowerCase().includes(term)
+    );
+  }, [students, search]);
+
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm sm:p-6">
-      <h2 className="text-xl font-extrabold text-gray-900">Alunos Registrados</h2>
-      <div className="mt-4 space-y-3">
-        {students.length === 0 ? (
-          <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500">Nenhum aluno cadastrado.</p>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-extrabold text-gray-900">Alunos Registrados</h2>
+          <p className="text-xs text-gray-500 mt-0.5">{students.length} aluno(s) cadastrado(s) no sistema</p>
+        </div>
+        {onRefresh && (
+          <button type="button" onClick={onRefresh} className="text-xs font-bold text-primary-600 hover:underline">
+            Atualizar
+          </button>
+        )}
+      </div>
+
+      {fullPage && (
+        <label className="relative mb-4 block">
+          <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nome ou matrícula..."
+            className="h-10 w-full rounded-xl border border-gray-200 pl-9 pr-3 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
+          />
+        </label>
+      )}
+
+      <div className="mt-2 space-y-3">
+        {filtered.length === 0 ? (
+          <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500">
+            {search ? 'Nenhum aluno encontrado.' : 'Nenhum aluno cadastrado.'}
+          </p>
         ) : (
-          students.map((student) => (
-            <div key={student.id || student.uid} className="flex flex-col gap-3 rounded-xl bg-gray-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3">
-                <Avatar name={student.nome || student.name} />
-                <div>
-                  <p className="font-bold text-gray-900">{student.nome || student.name}</p>
-                  <p className="text-xs text-gray-500">{student.email}</p>
-                  <p className="text-xs font-bold text-red-600">{student.absences || 0} ausência(s)</p>
-                </div>
-              </div>
-              {student.blocked ? (
-                <button type="button" onClick={() => onUnblock(student)} className="inline-flex items-center gap-1.5 bg-red-600 text-white font-bold text-xs px-3 py-2 rounded-xl hover:bg-red-700 transition">
-                  <FaUnlock /> Desbloquear
-                </button>
-              ) : (
-                <span className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
-                  Acesso Liberado
-                </span>
-              )}
-            </div>
+          filtered.map((student) => (
+            <StudentRow key={student.id || student.uid} student={student} onUnblock={onUnblock} />
           ))
         )}
       </div>
@@ -393,17 +532,84 @@ function StudentsPanel({ students, onUnblock }) {
   );
 }
 
+function StudentRow({ student, onUnblock }) {
+  const absences = student.absences || 0;
+  const isBlocked = !!student.blocked;
+
+  return (
+    <div className={`flex flex-col gap-3 rounded-xl p-4 sm:flex-row sm:items-center sm:justify-between ${isBlocked ? 'bg-red-50 border border-red-100' : 'bg-gray-50'}`}>
+      <div className="flex items-center gap-3">
+        <Avatar name={student.nome || student.name} blocked={isBlocked} />
+        <div>
+          <p className="font-bold text-gray-900">{student.nome || student.name}</p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-500">
+              <FaIdCard className="text-primary-400" />
+              {student.matriculaID || 'Sem matrícula'}
+            </span>
+            <span className="text-xs text-gray-400">{student.email}</span>
+          </div>
+          <div className="mt-1 flex items-center gap-2">
+            <span className={`text-xs font-bold ${absences >= 2 ? 'text-red-600' : absences === 1 ? 'text-orange-500' : 'text-gray-400'}`}>
+              {absences} ausência(s)
+            </span>
+            {absences > 0 && (
+              <span className="flex gap-0.5">
+                {[1, 2].map((i) => (
+                  <span key={i} className={`inline-block h-2 w-2 rounded-full ${absences >= i ? 'bg-red-500' : 'bg-gray-200'}`} />
+                ))}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col items-start sm:items-end gap-2">
+        {isBlocked ? (
+          <>
+            <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-bold text-red-700">
+              Acesso Bloqueado
+            </span>
+            <button
+              type="button"
+              onClick={() => onUnblock(student)}
+              className="inline-flex items-center gap-1.5 bg-primary-600 text-white font-bold text-xs px-3 py-2 rounded-xl hover:bg-primary-700 transition"
+            >
+              <FaUnlock /> Desbloquear
+            </button>
+          </>
+        ) : (
+          <span className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
+            Acesso Liberado
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AdminNotifications({ notifications }) {
+  const typeStyles = {
+    success: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+    warning: 'bg-amber-50 border-amber-200 text-amber-800',
+    error: 'bg-red-50 border-red-200 text-red-800',
+    info: 'bg-primary-50 border-primary-200 text-primary-800',
+  };
+
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm sm:p-6">
       <h2 className="text-xl font-extrabold text-gray-900">Notificações Administrativas</h2>
+      <p className="text-xs text-gray-500 mt-1">Apenas notificações geradas por você nesta sessão.</p>
       <div className="mt-4 space-y-3">
         {notifications.length === 0 ? (
-          <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500">Nenhuma notificação emitida hoje.</p>
+          <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500">Nenhuma notificação emitida ainda.</p>
         ) : (
-          notifications.map((notification) => (
-            <div key={notification.id} className="rounded-xl bg-primary-50 p-4 text-sm text-gray-700">
-              <p className="font-semibold">{notification.message}</p>
+          notifications.map((n) => (
+            <div key={n.id} className={`rounded-xl border p-4 text-sm ${typeStyles[n.type] || typeStyles.info}`}>
+              <p className="font-semibold">{n.message}</p>
+              <p className="text-xs opacity-60 mt-1">
+                {new Date(n.timestamp).toLocaleString('pt-BR')}
+              </p>
             </div>
           ))
         )}
@@ -425,9 +631,9 @@ function Reports({ stats }) {
   );
 }
 
-function Avatar({ name }) {
+function Avatar({ name, blocked = false }) {
   return (
-    <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-primary-100 text-sm font-extrabold text-primary-800">
+    <div className={`grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full text-sm font-extrabold ${blocked ? 'bg-red-100 text-red-700' : 'bg-primary-100 text-primary-800'}`}>
       {(name || 'A').slice(0, 1).toUpperCase()}
     </div>
   );

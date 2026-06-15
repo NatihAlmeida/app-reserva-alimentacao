@@ -18,35 +18,39 @@ export const NotificationProvider = ({ children }) => {
   const { user } = useContext(AuthContext);
   const [notifications, setNotifications] = useState(getStoredNotifications);
 
-  const visibleNotifications = useMemo(
-    () =>
-      notifications.filter((notification) => {
-        if (!user) return false;
+  const visibleNotifications = useMemo(() => {
+    if (!user) return [];
 
-        // Se a notificação for direcionada especificamente para o ID deste usuário, sempre mostra!
-        if (notification.userId && notification.userId === user.id) return true;
+    const userRole = (user.perfil || user.role || 'student').toLowerCase();
+    const userId = user.uid || user.id;
 
-        // Normalização de segurança para papéis (converte student/aluno para evitar divergências)
-        const userRole = (user.role || 'student').toLowerCase();
-        const notifAudience = (notification.audience || 'student').toLowerCase();
+    return notifications.filter((notification) => {
+      const notifAudience = (notification.audience || 'student').toLowerCase();
 
-        if (notifAudience === 'admin' || notifAudience === 'student' || notifAudience === 'aluno') {
-          const isStudentMatch = 
-            (userRole === 'student' || userRole === 'aluno') && 
-            (notifAudience === 'student' || notifAudience === 'aluno');
-            
-          const isAdminMatch = userRole === 'admin' && notifAudience === 'admin';
+      // Notificações direcionadas explicitamente para este usuário (ex: cancelamento enviado ao aluno)
+      if (notification.userId && notification.userId === userId) return true;
 
-          if (!isStudentMatch && !isAdminMatch) return false;
-        }
-
-        if (notification.userId && notification.userId !== user.id) return false;
+      // Para admins: mostra apenas notificações geradas PELO próprio admin
+      // (pedidos novos criados por ele, ações que ele executou)
+      if (userRole === 'admin') {
+        if (notifAudience !== 'admin') return false;
+        // Filtra por adminId: somente notificações criadas por este admin
+        if (notification.adminId && notification.adminId !== userId) return false;
+        // Notificações sem adminId (legadas) que não têm userId específico são exibidas
         return true;
-      }),
-    [notifications, user]
-  );
+      }
 
-  const unreadCount = visibleNotifications.filter((notification) => !notification.read).length;
+      // Para alunos: mostra notificações de audiência aluno ou enviadas diretamente para ele
+      const isStudentUser = userRole === 'student' || userRole === 'aluno';
+      const isStudentAudience = notifAudience === 'student' || notifAudience === 'aluno';
+
+      if (isStudentUser && isStudentAudience && !notification.userId) return true;
+
+      return false;
+    });
+  }, [notifications, user]);
+
+  const unreadCount = visibleNotifications.filter((n) => !n.read).length;
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications));
@@ -62,30 +66,41 @@ export const NotificationProvider = ({ children }) => {
     }
   }, []);
 
-  const addNotification = (message, type = 'info', audience = user?.role || 'student', options = {}) => {
+  /**
+   * addNotification
+   * @param {string} message
+   * @param {'info'|'success'|'warning'|'error'} type
+   * @param {'admin'|'student'|'aluno'} audience
+   * @param {object} options - { userId, adminId }
+   */
+  const addNotification = (message, type = 'info', audience = user?.perfil || 'student', options = {}) => {
+    const userId = user?.uid || user?.id || null;
     const newNotification = {
       id: Date.now() + Math.random(),
       message,
       type,
       audience,
-      userId: options.userId || user?.id || null, // Garante o vínculo com o usuário atual se não for passado explicitamente
+      // Para notificações de admin, vincula ao adminId atual
+      adminId: audience === 'admin' ? (options.adminId || userId) : null,
+      // Para notificações de aluno direcionadas (ex: cancelamento), vincula ao userId alvo
+      userId: options.userId || null,
       read: false,
       timestamp: new Date().toISOString(),
     };
 
     setNotifications((prev) => [newNotification, ...prev]);
 
-    const userRole = (user?.role || 'student').toLowerCase();
+    // Push notification apenas se for para o usuário atual
+    const userRole = (user?.perfil || user?.role || 'student').toLowerCase();
     const notifAudience = audience.toLowerCase();
-    const isStudentAudience = notifAudience === 'student' || notifAudience === 'aluno';
-    const isStudentUser = userRole === 'student' || userRole === 'aluno';
+    const isForMe =
+      (options.userId && options.userId === userId) ||
+      (notifAudience === 'admin' && userRole === 'admin' && (!options.adminId || options.adminId === userId)) ||
+      ((notifAudience === 'student' || notifAudience === 'aluno') &&
+        (userRole === 'student' || userRole === 'aluno') &&
+        !options.userId);
 
-    const shouldPush =
-      typeof Notification !== 'undefined' &&
-      Notification.permission === 'granted' &&
-      ((isStudentAudience && isStudentUser) || (notifAudience === 'admin' && userRole === 'admin') || options.userId === user?.id);
-
-    if (shouldPush) {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && isForMe) {
       new Notification('Cantina do Neném', {
         body: message,
         icon: '/favicon.svg',
@@ -98,24 +113,19 @@ export const NotificationProvider = ({ children }) => {
 
   const markAsRead = (id) => {
     setNotifications((prev) =>
-      prev.map((notification) =>
-        notification.id === id ? { ...notification, read: true } : notification
-      )
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
   };
 
   const markAllAsRead = () => {
-    const visibleIds = new Set(visibleNotifications.map((notification) => notification.id));
-
+    const visibleIds = new Set(visibleNotifications.map((n) => n.id));
     setNotifications((prev) =>
-      prev.map((notification) =>
-        visibleIds.has(notification.id) ? { ...notification, read: true } : notification
-      )
+      prev.map((n) => (visibleIds.has(n.id) ? { ...n, read: true } : n))
     );
   };
 
   const removeNotification = (id) => {
-    setNotifications((prev) => prev.filter((notification) => notification.id !== id));
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
   return (

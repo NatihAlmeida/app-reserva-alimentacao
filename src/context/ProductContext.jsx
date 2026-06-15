@@ -53,11 +53,12 @@ const normalizarProduto = (firestoreDoc) => ({
   produtosID: firestoreDoc.produtosID,
   name: firestoreDoc.nome,
   nome: firestoreDoc.nome,
-  price: firestoreDoc.preco || firestoreDoc.Valor || 0,
-  preco: firestoreDoc.preco || firestoreDoc.Valor || 0,
+  // Lê "Valor" que é o campo real do Firestore
+  price: firestoreDoc.Valor || firestoreDoc.preco || 0,
+  preco: firestoreDoc.Valor || firestoreDoc.preco || 0,
   image: firestoreDoc.imagemUrl || "",
   imagemUrl: firestoreDoc.imagemUrl || "",
-  status: firestoreDoc["disponível"] || firestoreDoc.disponivel ? "active" : "inactive",
+  status: (firestoreDoc["disponível"] ?? firestoreDoc.disponivel) ? "active" : "inactive",
   disponivel: firestoreDoc["disponível"] ?? firestoreDoc.disponivel ?? true,
   dietary: [
     firestoreDoc.temGlutem && "CONTÉM GLÚTEN",
@@ -71,8 +72,11 @@ const normalizarProduto = (firestoreDoc) => ({
   temAcucarAlto: firestoreDoc.temAcucarAlto ?? false,
   criadoEm: firestoreDoc.criadoEm,
   description: firestoreDoc.descricao || "",
-  category: firestoreDoc.categoria || "Geral",
+  descricao: firestoreDoc.descricao || "",
+  category: firestoreDoc.categoria || "Salgados",
+  categoria: firestoreDoc.categoria || "Salgados",
   quantity: firestoreDoc.quantidade || 0,
+  quantidade: firestoreDoc.quantidade || 0,
 });
 
 // Converte pedido do Firestore para o formato legível pelo frontend

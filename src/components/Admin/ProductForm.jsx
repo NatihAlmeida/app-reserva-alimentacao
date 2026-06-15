@@ -162,7 +162,7 @@ export default function ProductForm({ productToEdit, onClose }) {
                 />
                 <button
                   type="button"
-                  onClick={() => updateField('quantidade', Number(formData.quantity || formData.quantidade) + 1)}
+                  onClick={() => updateField('quantidade', Number(formData.quantidade) + 1)}
                   className="grid w-12 place-items-center text-gray-600 hover:text-primary-700"
                 >
                   <FaPlus />
