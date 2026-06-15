@@ -143,7 +143,7 @@ export default function StudentDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      <Header cartCount={cartCount} onCartOpen={() => setCartOpen(true)} />
+      <Header title="Cantina do Nenêm" cartCount={cartCount} onCartOpen={() => setCartOpen(true)} />
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="mb-6 rounded-3xl bg-gradient-to-r from-primary-600 to-primary-800 p-6 text-white shadow-lg">

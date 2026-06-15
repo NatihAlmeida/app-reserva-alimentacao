@@ -144,6 +144,18 @@ export default function Login() {
           >
             {loading ? "Entrando…" : "Acessar"}
           </button>
+
+          {role === "student" && (
+            <p className="text-center text-sm text-gray-500">
+              Não tem conta?{" "}
+              <Link
+                to="/cadastro"
+                className="font-bold text-primary-700 transition hover:text-primary-900"
+              >
+                Criar conta
+              </Link>
+            </p>
+          )}
         </form>
       </section>
     </main>
