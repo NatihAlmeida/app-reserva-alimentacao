@@ -22,131 +22,141 @@ export default function StudentDashboard() {
 
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
+  // Filtra os produtos aceitando tanto chaves em português quanto em inglês
   const filteredProducts = useMemo(() => {
     const list = products.filter((product) => {
+      const itemNome = product.nome || product.name || '';
+      const itemDescricao = product.descricao || product.description || '';
+
       const matchesSearch =
         searchTerm === '' ||
-        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.description.toLowerCase().includes(searchTerm.toLowerCase());
+        itemNome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        itemDescricao.toLowerCase().includes(searchTerm.toLowerCase());
+
       const matchesDietary =
         selectedDietary === 'all' || product.dietary?.includes(selectedDietary);
 
-      return matchesSearch && matchesDietary && product.status === 'active';
+      return matchesSearch && matchesDietary;
     });
 
-    if (sortOrder === 'price-asc') return [...list].sort((a, b) => a.price - b.price);
-    if (sortOrder === 'price-desc') return [...list].sort((a, b) => b.price - a.price);
+    if (sortOrder === 'price-asc') {
+      return [...list].sort((a, b) => Number(a.preco ?? a.price ?? 0) - Number(b.preco ?? b.price ?? 0));
+    }
+    if (sortOrder === 'price-desc') {
+      return [...list].sort((a, b) => Number(b.preco ?? b.price ?? 0) - Number(a.preco ?? a.price ?? 0));
+    }
+
     return list;
   }, [products, searchTerm, selectedDietary, sortOrder]);
 
-  const handleAddToCart = (product, quantity = 1) => {
-    if (user?.blocked) {
-      addNotification(
-        'Your account has been temporarily blocked. Please contact the cafeteria.',
-        'error',
-        'student',
-        { userId: user.id }
-      );
-      return;
-    }
-
-    if (product.quantity <= 0) {
-      addNotification(`Desculpe, ${product.name} está esgotado!`, 'warning', 'student', {
-        userId: user?.id,
-      });
-      return;
-    }
-
-    setCartItems((current) => {
-      const existing = current.find((item) => item.id === product.id);
+  const addToCart = (product, quantity) => {
+    const productId = product.produtosID || product.id;
+    setCartItems((prev) => {
+      const existing = prev.find((item) => (item.produtosID || item.id) === productId);
       if (existing) {
-        return current.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + quantity } : item
+        return prev.map((item) =>
+          (item.produtosID || item.id) === productId
+            ? { ...item, quantity: item.quantity + quantity }
+            : item
         );
       }
-      return [...current, { ...product, quantity }];
+      return [...prev, { ...product, quantity }];
     });
-
-    setCartOpen(true);
+    
+    const itemNome = product.nome || product.name || 'Produto';
+    addNotification(`${quantity}x ${itemNome} adicionado ao carrinho`, 'info', 'student');
   };
 
-  const incrementItem = (productId) => {
-    setCartItems((current) =>
-      current.map((item) =>
-        item.id === productId ? { ...item, quantity: item.quantity + 1 } : item
-      )
+  const incrementItem = (id) => {
+    setCartItems((prev) =>
+      prev.map((item) => ((item.produtosID || item.id) === id ? { ...item, quantity: item.quantity + 1 } : item))
     );
   };
 
-  const decrementItem = (productId) => {
-    setCartItems((current) =>
-      current
-        .map((item) =>
-          item.id === productId ? { ...item, quantity: item.quantity - 1 } : item
-        )
+  const decrementItem = (id) => {
+    setCartItems((prev) =>
+      prev
+        .map((item) => ((item.produtosID || item.id) === id ? { ...item, quantity: item.quantity - 1 } : item))
         .filter((item) => item.quantity > 0)
     );
   };
 
-  const removeItem = (productId) => {
-    setCartItems((current) => current.filter((item) => item.id !== productId));
+  const removeItem = (id) => {
+    setCartItems((prev) => prev.filter((item) => (item.produtosID || item.id) !== id));
   };
 
-  const handleCheckout = ({ pickupDate, pickupTime }) => {
+  // 🔥 AJUSTADO: Destrava o botão, impede a notificação vazia, limpa e fecha o carrinho após o sucesso
+  const handleCheckout = async (pickupDetails) => {
     if (cartItems.length === 0) return;
 
-    const results = cartItems.map((item) =>
-      addReservation({
-        productId: item.id,
-        productName: item.name,
-        quantity: item.quantity,
-        time: pickupTime,
-        pickupDate,
-        pickupTime,
-        price: item.price * item.quantity,
-        image: item.image,
-      })
-    );
+    // Normaliza todos os dados antes de passar para frente para não quebrar chaves de leitura futuras
+    const normalizedItems = cartItems.map(item => ({
+      id: item.produtosID || item.id,
+      produtosID: item.produtosID || item.id,
+      name: item.nome || item.name || 'Produto',
+      nome: item.nome || item.name || 'Produto',
+      price: Number(item.preco ?? item.price ?? 0),
+      preco: Number(item.preco ?? item.price ?? 0),
+      quantity: item.quantity,
+      image: item.imagemUrl || item.image || '',
+      imagemUrl: item.imagemUrl || item.image || ''
+    }));
 
-    const failed = results.find((result) => !result.success);
-    if (failed) {
-      addNotification(failed.message, 'error', 'student', { userId: user?.id });
-      return;
+    try {
+      // Cria a estrutura para salvar na função addReservation do seu ProductContext
+      const result = await addReservation({
+        items: normalizedItems,
+        ...pickupDetails,
+        userId: user?.id || null,
+        studentName: user?.name || 'Estudante',
+        timestamp: new Date().toISOString(),
+      });
+
+      // Verifica se o context retornou erro de horário limite ou outra validação interna
+      if (result && result.success === false) {
+        addNotification(result.message || 'Erro ao processar reserva.', 'error', 'student');
+        return;
+      }
+
+      // Define o texto seguro para a caixa de mensagem
+      const textoMensagem = normalizedItems.length === 1 
+        ? `Sua reserva de "${normalizedItems[0].nome}" foi enviada!` 
+        : `Sua reserva de ${normalizedItems.length} itens foi enviada!`;
+
+      // Dispara a notificação de sucesso com fallbacks de segurança de Audience
+      addNotification(
+        textoMensagem,
+        'success',
+        user?.role || 'student',
+        { userId: user?.id }
+      );
+
+      // Limpa e fecha com segurança
+      setCartItems([]);
+      setCartOpen(false);
+
+    } catch (error) {
+      console.error("Erro ao finalizar reserva:", error);
+      addNotification('Ocorreu um erro ao processar sua reserva. Tente novamente.', 'error', 'student');
     }
-
-    const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const itemSummary = cartItems.map((item) => `${item.quantity}x ${item.name}`).join(', ');
-
-    addNotification(
-      `Reserva confirmada para ${pickupTime}. Você pode acompanhar em Minhas Reservas.`,
-      'success',
-      'student',
-      { userId: user?.id }
-    );
-    addNotification(
-      `Nova reserva confirmada: ${itemSummary} para ${pickupDate} às ${pickupTime}. Total: R$ ${total
-        .toFixed(2)
-        .replace('.', ',')}.`,
-      'reservation',
-      'admin'
-    );
-    setCartItems([]);
-    setCartOpen(false);
   };
 
   return (
-    <>
-      <Header
-        title="Cantina do Neném"
-        searchSlot={<SearchBar searchTerm={searchTerm} setSearchTerm={setSearchTerm} />}
-        cartCount={cartCount}
-        onCartOpen={() => setCartOpen(true)}
-      />
+    <div className="min-h-screen bg-gray-50 pb-24">
+      <Header cartCount={cartCount} onCartOpen={() => setCartOpen(true)} />
 
-      <main className="container-custom py-6 pb-24">
-        {user?.blocked && (
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mb-6 rounded-3xl bg-gradient-to-r from-primary-600 to-primary-800 p-6 text-white shadow-lg">
+          <h1 className="text-2xl font-extrabold sm:text-3xl">Olá, {user?.name || 'Estudante'}! 👋</h1>
+          <p className="mt-1 text-sm text-white/85">Faça sua reserva e retire diretamente no balcão da cantina.</p>
+          <div className="mt-5 max-w-md">
+            <SearchBar searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
+          </div>
+        </div>
+
+        {user?.status === 'blocked' && (
           <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
-            Your account has been temporarily blocked. Please contact the cafeteria.
+            Sua conta está temporariamente bloqueada. Por favor, procure a administração da cantina.
           </div>
         )}
 
@@ -160,7 +170,7 @@ export default function StudentDashboard() {
         <section className="mt-5 grid gap-5 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
           {filteredProducts.map((product) => (
             <StudentProductCard
-              key={product.id}
+              key={product.produtosID || product.id}
               product={product}
               onOpenDetails={setSelectedProduct}
             />
@@ -187,11 +197,11 @@ export default function StudentDashboard() {
       {selectedProduct && (
         <ProductDetailsModal
           product={selectedProduct}
-          isOpen
+          isOpen={!!selectedProduct}
           onClose={() => setSelectedProduct(null)}
-          onAddToCart={handleAddToCart}
+          onAddToCart={addToCart}
         />
       )}
-    </>
+    </div>
   );
 }

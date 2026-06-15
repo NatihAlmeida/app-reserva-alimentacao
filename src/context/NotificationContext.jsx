@@ -22,9 +22,24 @@ export const NotificationProvider = ({ children }) => {
     () =>
       notifications.filter((notification) => {
         if (!user) return false;
-        if (notification.audience === 'admin' || notification.audience === 'student') {
-          if (notification.audience !== user.role) return false;
+
+        // Se a notificação for direcionada especificamente para o ID deste usuário, sempre mostra!
+        if (notification.userId && notification.userId === user.id) return true;
+
+        // Normalização de segurança para papéis (converte student/aluno para evitar divergências)
+        const userRole = (user.role || 'student').toLowerCase();
+        const notifAudience = (notification.audience || 'student').toLowerCase();
+
+        if (notifAudience === 'admin' || notifAudience === 'student' || notifAudience === 'aluno') {
+          const isStudentMatch = 
+            (userRole === 'student' || userRole === 'aluno') && 
+            (notifAudience === 'student' || notifAudience === 'aluno');
+            
+          const isAdminMatch = userRole === 'admin' && notifAudience === 'admin';
+
+          if (!isStudentMatch && !isAdminMatch) return false;
         }
+
         if (notification.userId && notification.userId !== user.id) return false;
         return true;
       }),
@@ -53,17 +68,22 @@ export const NotificationProvider = ({ children }) => {
       message,
       type,
       audience,
-      userId: options.userId || null,
+      userId: options.userId || user?.id || null, // Garante o vínculo com o usuário atual se não for passado explicitamente
       read: false,
       timestamp: new Date().toISOString(),
     };
 
     setNotifications((prev) => [newNotification, ...prev]);
 
+    const userRole = (user?.role || 'student').toLowerCase();
+    const notifAudience = audience.toLowerCase();
+    const isStudentAudience = notifAudience === 'student' || notifAudience === 'aluno';
+    const isStudentUser = userRole === 'student' || userRole === 'aluno';
+
     const shouldPush =
       typeof Notification !== 'undefined' &&
       Notification.permission === 'granted' &&
-      (audience === user?.role || options.userId === user?.id);
+      ((isStudentAudience && isStudentUser) || (notifAudience === 'admin' && userRole === 'admin') || options.userId === user?.id);
 
     if (shouldPush) {
       new Notification('Cantina do Neném', {

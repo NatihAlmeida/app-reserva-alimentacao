@@ -56,11 +56,12 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   // ── Login ─────────────────────────────────────────────────────────────────
+  // ── Login ─────────────────────────────────────────────────────────────────
   const login = async (email, password) => {
-    // 🛠️ CORREÇÃO: Estava "!use(email)", mudei para "!validarEmailIFSC(email)"
-    if (!validarEmailIFSC(email)) {
-      return { success: false, message: MENSAGEM_DOMINIO_INVALIDO };
-    }
+    
+    // if (!validarEmailIFSC(email)) {
+    //   return { success: false, message: MENSAGEM_DOMINIO_INVALIDO };
+    // }
 
     try {
       setLoading(true);

@@ -15,7 +15,8 @@ import NotificationPanel from './NotificationPanel';
 export default function Header({ title, searchSlot, cartCount = 0, onCartOpen }) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const { logout, user } = useContext(AuthContext);
+  // ✅ FIX: Desestrutura 'role' do contexto (que já é user?.perfil mapeado no AuthContext)
+  const { logout, user, role } = useContext(AuthContext);
   const { unreadCount } = useContext(NotificationContext);
   const navigate = useNavigate();
 
@@ -32,7 +33,8 @@ export default function Header({ title, searchSlot, cartCount = 0, onCartOpen })
             <div className="flex items-center justify-between gap-4">
               <button
                 type="button"
-                onClick={() => navigate(user?.role === 'admin' ? '/admin' : '/dashboard')}
+                // ✅ FIX: usa 'role' em vez de user?.role (que não existe no doc Firestore)
+                onClick={() => navigate(role === 'admin' ? '/admin' : '/dashboard')}
                 className="text-left text-xl font-bold text-white sm:text-2xl"
               >
                 {title}
@@ -47,6 +49,7 @@ export default function Header({ title, searchSlot, cartCount = 0, onCartOpen })
                   setShowNotifications={setShowNotifications}
                   showUserMenu={showUserMenu}
                   setShowUserMenu={setShowUserMenu}
+                  role={role}
                   user={user}
                   navigate={navigate}
                   handleLogout={handleLogout}
@@ -64,6 +67,7 @@ export default function Header({ title, searchSlot, cartCount = 0, onCartOpen })
                 setShowNotifications={setShowNotifications}
                 showUserMenu={showUserMenu}
                 setShowUserMenu={setShowUserMenu}
+                role={role}
                 user={user}
                 navigate={navigate}
                 handleLogout={handleLogout}
@@ -105,6 +109,7 @@ function IconActions({
   setShowNotifications,
   showUserMenu,
   setShowUserMenu,
+  role,   // ✅ FIX: recebe 'role' em vez de depender de user?.role
   user,
   navigate,
   handleLogout,
@@ -132,14 +137,15 @@ function IconActions({
           type="button"
           onClick={() => setShowUserMenu(!showUserMenu)}
           className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
-          aria-label={`Abrir menu de ${user?.name || 'usuário'}`}
+          aria-label={`Abrir menu de ${user?.nome || 'usuário'}`}
         >
           <FaUser size={16} />
         </button>
 
         {showUserMenu && (
           <div className="absolute right-0 z-[60] mt-2 w-52 rounded-xl bg-white py-2 shadow-lg">
-            {user?.role === 'student' && (
+            {/* ✅ FIX: usa 'role' (mapeado do user.perfil no AuthContext) */}
+            {role === 'aluno' && (
               <button
                 type="button"
                 onClick={() => {

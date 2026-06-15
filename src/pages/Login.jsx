@@ -6,19 +6,18 @@ import { AuthContext } from "../context/AuthContext";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("student");
+  const [role, setRole] = useState("student"); // 'student' ou 'admin' na interface
   const [error, setError] = useState("");
   const { login, loading, validarEmailIFSC } = useContext(AuthContext);
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
+ const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
-    if (!validarEmailIFSC(email)) {
+    if (role !== "admin" && !validarEmailIFSC(email)) {
       setError(
-        "Acesso restrito. Use seu e-mail institucional do IFSC " +
-          "(@aluno.ifsc.edu.br ou @ifsc.edu.br)."
+        "Acesso restrito. Alunos devem usar o e-mail institucional do IFSC (@aluno.ifsc.edu.br)."
       );
       return;
     }
@@ -31,18 +30,19 @@ export default function Login() {
     const result = await login(email, password);
 
     if (result.success) {
-      const perfilDoBanco = result.user?.perfil; // 'aluno' ou 'admin'
-      
-      // Mapeia a role visual com o perfil salvo em português no Firestore
+      const perfilDoBanco = result.user?.perfil; // 'aluno' ou 'admin' do Firestore
       const roleConvertida = role === "student" ? "aluno" : "admin";
 
-      // 🚀 SEGURANÇA: Se o usuário tentou entrar como Admin, mas o perfil dele no banco é Aluno (ou vice-versa)
+      // Valida se o usuário escolheu o tipo de conta correto no seletor visual
       if (perfilDoBanco !== roleConvertida) {
-        setError(`Acesso negado. Seu perfil cadastrado não corresponde a um ${role === 'student' ? 'Aluno' : 'Administrador'}.`);
+        setError(
+          `Acesso negado. Seu e-mail está registrado como ${
+            perfilDoBanco === "admin" ? "Administrador" : "Aluno"
+          }.`
+        );
         return;
       }
 
-      // Se passou em tudo, redireciona para as rotas corretas
       navigate(perfilDoBanco === "admin" ? "/admin" : "/dashboard", { replace: true });
     } else {
       setError(result.message);
@@ -93,7 +93,7 @@ export default function Login() {
             <input
               type="email"
               className="h-14 w-full rounded-xl border-0 bg-gray-100 pl-12 pr-4 text-base text-gray-700 outline-none ring-2 ring-transparent transition placeholder:text-gray-500 focus:bg-white focus:ring-primary-200"
-              placeholder="seuemail@aluno.ifsc.edu.br"
+              placeholder={role === "admin" ? "seu.nome@ifsc.edu.br" : "seuemail@aluno.ifsc.edu.br"}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
@@ -114,13 +114,8 @@ export default function Login() {
             />
           </label>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Link
-              to="/cadastro"
-              className="text-sm font-bold text-primary-700 transition hover:text-primary-900"
-            >
-              Criar conta de aluno
-            </Link>
+          {/* Seção de links limpa: Apenas Esqueci a Senha centralizado */}
+          <div className="flex items-center justify-center pt-1">
             <Link
               to="/esqueci-senha"
               className="text-sm font-bold text-primary-700 transition hover:text-primary-900"
@@ -129,17 +124,8 @@ export default function Login() {
             </Link>
           </div>
 
-          {role === "admin" && (
-            <Link
-              to="/admin-setup"
-              className="block rounded-xl bg-primary-50 p-3 text-center text-sm font-bold text-primary-800 transition hover:bg-primary-100"
-            >
-              Configurar acesso administrativo
-            </Link>
-          )}
-
           {/* Banner informativo de domínio */}
-          <div className="rounded-xl bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
+          <div className="rounded-xl bg-emerald-50 px-4 py-3 text-xs text-emerald-800 text-center">
             🔒 Acesso exclusivo para e-mails{" "}
             <strong>@aluno.ifsc.edu.br</strong> e{" "}
             <strong>@ifsc.edu.br</strong>

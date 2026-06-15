@@ -25,7 +25,13 @@ export default function ReservationCart({
   const [pickupDate, setPickupDate] = useState(getTodayInputValue);
   const [pickupTime, setPickupTime] = useState('18:30');
   const [checkoutError, setCheckoutError] = useState('');
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  // Mapeia e acumula o preço correto das chaves
+  const total = items.reduce((sum, item) => {
+    const precoItem = Number(item.preco ?? item.price ?? 0);
+    return sum + precoItem * item.quantity;
+  }, 0);
+
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
   const formattedDate = useMemo(() => {
@@ -47,7 +53,7 @@ export default function ReservationCart({
     const afterNoon = now.getHours() * 60 + now.getMinutes() >= 12 * 60;
 
     if (pickupDate === currentDate && afterNoon) {
-      setCheckoutError('Reservations for today closed at 12:00 PM.');
+      setCheckoutError('As reservas para hoje fecharam às 12:00 PM.');
       return;
     }
 
@@ -89,55 +95,62 @@ export default function ReservationCart({
               </div>
             </div>
           ) : (
-            items.map((item) => (
-              <div key={item.id} className="flex gap-4 border-b py-5">
-                <img
-                  src={item.image}
-                  alt={item.name}
-                  className="h-[70px] w-[70px] rounded-md object-cover"
-                />
+            items.map((item) => {
+              const itemNome = item.nome || item.name || 'Produto';
+              const itemPreco = Number(item.preco ?? item.price ?? 0);
+              const itemImagem = item.imagemUrl || item.image || '';
+              const itemId = item.produtosID || item.id;
 
-                <div className="min-w-0 flex-1">
-                  <h3 className="truncate text-sm font-extrabold text-gray-800">{item.name}</h3>
-                  <p className="mt-1 text-base font-extrabold text-primary-700">
-                    R$ {item.price.toFixed(2).replace('.', ',')}
-                  </p>
+              return (
+                <div key={itemId} className="flex gap-4 border-b py-5">
+                  <img
+                    src={itemImagem}
+                    alt={itemNome}
+                    className="h-[70px] w-[70px] rounded-md object-cover"
+                  />
 
-                  <div className="mt-3 flex items-center gap-3">
-                    <div className="inline-flex h-8 items-center rounded bg-gray-50">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-sm font-extrabold text-gray-800">{itemNome}</h3>
+                    <p className="mt-1 text-base font-extrabold text-primary-700">
+                      R$ {itemPreco.toFixed(2).replace('.', ',')}
+                    </p>
+
+                    <div className="mt-3 flex items-center gap-3">
+                      <div className="inline-flex h-8 items-center rounded bg-gray-50">
+                        <button
+                          type="button"
+                          onClick={() => onDecrement(itemId)}
+                          className="grid h-8 w-9 place-items-center text-lg font-bold text-gray-900 transition hover:bg-gray-100"
+                          aria-label={`Diminuir quantidade de ${itemNome}`}
+                        >
+                          -
+                        </button>
+                        <span className="grid h-8 w-8 place-items-center text-sm text-gray-700">
+                          {item.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onIncrement(itemId)}
+                          className="grid h-8 w-9 place-items-center text-sm font-bold text-gray-900 transition hover:bg-gray-100"
+                          aria-label={`Aumentar quantidade de ${itemNome}`}
+                        >
+                          +
+                        </button>
+                      </div>
+
                       <button
                         type="button"
-                        onClick={() => onDecrement(item.id)}
-                        className="grid h-8 w-9 place-items-center text-lg font-bold text-gray-900 transition hover:bg-gray-100"
-                        aria-label={`Diminuir quantidade de ${item.name}`}
+                        onClick={() => onRemove(itemId)}
+                        className="grid h-8 w-8 place-items-center text-gray-400 transition hover:text-red-500"
+                        aria-label={`Remover ${itemNome}`}
                       >
-                        -
-                      </button>
-                      <span className="grid h-8 w-8 place-items-center text-sm text-gray-700">
-                        {item.quantity}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => onIncrement(item.id)}
-                        className="grid h-8 w-9 place-items-center text-sm font-bold text-gray-900 transition hover:bg-gray-100"
-                        aria-label={`Aumentar quantidade de ${item.name}`}
-                      >
-                        +
+                        <FaRegTrashAlt size={14} />
                       </button>
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => onRemove(item.id)}
-                      className="grid h-8 w-8 place-items-center text-gray-400 transition hover:text-red-500"
-                      aria-label={`Remover ${item.name}`}
-                    >
-                      <FaRegTrashAlt size={14} />
-                    </button>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 

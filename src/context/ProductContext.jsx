@@ -26,8 +26,24 @@ const getMinutes = (time) => {
   return hours * 60 + minutes;
 };
 
-export const isBeforeReservationDeadline = () => {
+// Valida de forma inteligente se a data é hoje ou futura
+export const isBeforeReservationDeadline = (pickupDateString) => {
   const now = new Date();
+  
+  if (pickupDateString) {
+    // Obtém a data de hoje no fuso horário local no formato "YYYY-MM-DD"
+    const ano = now.getFullYear();
+    const mes = String(now.getMonth() + 1).padStart(2, '0');
+    const dia = String(now.getDate()).padStart(2, '0');
+    const todayStr = `${ano}-${mes}-${dia}`;
+
+    // Se a data escolhida for após o dia de hoje (ex: amanhã), ignora a trava das 12h
+    if (pickupDateString > todayStr) {
+      return true;
+    }
+  }
+
+  // Se for para o próprio dia de hoje, a regra estrita das 12:00 entra em ação
   return now.getHours() * 60 + now.getMinutes() < getMinutes(RESERVATION_DEADLINE);
 };
 
@@ -76,29 +92,26 @@ const normalizarPedido = (firestoreDoc) => ({
 });
 
 export const ProductProvider = ({ children }) => {
-  // 🚀 Puxamos o user e o estado de loading do AuthContext
   const { user, loading: authLoading } = useContext(AuthContext);
   const [products, setProducts] = useState([]);
   const [reservations, setReservations] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [loadingReservations, setLoadingReservations] = useState(false);
 
-  // ── Carrega produtos de forma inteligente ────────────────────────────────
+  // ── Carrega produtos ──────────────────────────────────────────────────
   useEffect(() => {
-    // 💡 TRAVA: Se o Auth ainda está processando se o usuário tá logado ou não, espera.
     if (authLoading) return;
-
-    // Se as regras do Firestore para produtos exigem autenticação, barramos requisições de usuários deslogados aqui
     if (!user) {
       setProducts([]);
       setLoadingProducts(false);
       return;
     }
+    if (!user.perfil) return;
 
     const carregarProdutos = async () => {
       setLoadingProducts(true);
       try {
-        const isAdmin = user?.perfil === "admin";
+        const isAdmin = user.perfil === "admin";
         const raw = isAdmin
           ? await buscarTodosProdutos()
           : await buscarProdutosDisponiveis();
@@ -111,16 +124,16 @@ export const ProductProvider = ({ children }) => {
     };
 
     carregarProdutos();
-  }, [user, authLoading]); // Adicionado dependências corretas
+  }, [user, user?.perfil, authLoading]);
 
-  // ── Carrega pedidos baseados na UID/AlunoID correta ─────────────────────
+  // ── Carrega pedidos ───────────────────────────────────────────────────
   useEffect(() => {
     if (authLoading) return;
-
     if (!user) {
       setReservations([]);
       return;
     }
+    if (!user.perfil) return;
 
     const carregarPedidos = async () => {
       setLoadingReservations(true);
@@ -128,7 +141,7 @@ export const ProductProvider = ({ children }) => {
         const raw =
           user.perfil === "admin"
             ? await buscarTodosPedidos()
-            : await buscarPedidosAluno(user.uid); // 💡 CORREÇÃO: Busca por user.uid (alunoID no Firestore), não matriculaID
+            : await buscarPedidosAluno(user.uid || user.id);
         setReservations(raw.map(normalizarPedido));
       } catch (error) {
         console.error("Erro ao carregar pedidos:", error);
@@ -138,7 +151,7 @@ export const ProductProvider = ({ children }) => {
     };
 
     carregarPedidos();
-  }, [user, authLoading]);
+  }, [user, user?.perfil, authLoading]);
 
   // ── CRUD Produtos (admin) ───────────────────────────────────────────────
   const addProduct = async (produto) => {
@@ -180,11 +193,13 @@ export const ProductProvider = ({ children }) => {
   };
 
   // ── Criar Pedido (aluno) ────────────────────────────────────────────────
-  const addReservation = async (cartItems) => {
-    if (!isBeforeReservationDeadline()) {
+  const addReservation = async (checkoutPayload) => {
+    const pickupDate = checkoutPayload?.pickupDate || null;
+
+    if (!isBeforeReservationDeadline(pickupDate)) {
       return {
         success: false,
-        message: "Reservas para hoje encerraram às 12h.",
+        message: "Reservas para o dia de hoje encerraram às 12h.",
       };
     }
 
@@ -193,39 +208,73 @@ export const ProductProvider = ({ children }) => {
     }
 
     try {
+      const cartItems = checkoutPayload.items || checkoutPayload;
+
+      if (!Array.isArray(cartItems) || cartItems.length === 0) {
+        return { success: false, message: "O carrinho está vazio." };
+      }
+
       const total = cartItems.reduce(
         (sum, item) => sum + (item.preco || item.price || 0) * (item.quantidade || item.quantity || 1),
         0
       );
 
-      // Envia os dados para a função de integração com o banco
-      const pedidoID = await criarPedidoCantina(user, cartItems, total);
+      // Sincronizado para enviar propriedades com fallbacks completos e chaves unificadas
+      const itensFormatadosParaOFirebase = cartItems.map((item) => ({
+        produtosID: String(item.produtosID || item.id || item.produtoID || ""),
+        id: String(item.produtosID || item.id || item.produtoID || ""),
+        nome: String(item.nome || item.name || "Produto"),
+        name: String(item.nome || item.name || "Produto"),
+        preco: Number(item.preco || item.price || item.Valor || 0),
+        Valor: Number(item.preco || item.price || item.Valor || 0),
+        quantidade: Number(item.quantidade || item.quantity || item.Quantidade || 1),
+        Quantidade: Number(item.quantidade || item.quantity || item.Quantidade || 1),
+      }));
+
+      // Blindagem contra chaves nulas ou indefinidas do usuário
+      const usuarioHigienizado = {
+        uid: String(user.uid || user.id || ""),
+        id: String(user.uid || user.id || ""),
+        nome: String(user.nome || user.name || user.displayName || "Estudante"),
+        name: String(user.nome || user.name || user.displayName || "Estudante"),
+        displayName: String(user.nome || user.name || user.displayName || "Estudante"),
+        email: String(user.email || ""),
+        perfil: String(user.perfil || user.role || "student"),
+        role: String(user.perfil || user.role || "student"),
+      };
+
+      // Passa os objetos blindados e compatíveis
+      const pedidoID = await criarPedidoCantina(usuarioHigienizado, itensFormatadosParaOFirebase, total);
+
+      // Formata os dados de data e hora locais para o state do frontend
+      const dataFormatada = checkoutPayload.pickupDate 
+        ? checkoutPayload.pickupDate.split('-').reverse().join('-') 
+        : new Date().toLocaleDateString("pt-BR").replace(/\//g, "-");
+
+      const horaFormatada = checkoutPayload.pickupTime || new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
       const novoPedido = normalizarPedido({
         pedidosID: pedidoID,
-        alunoID: user.uid, // Mapeado com a UID real do Auth mapeada no Firestore
-        alunoNome: user.nome,
-        produtos: cartItems.map((item) => ({
-          produtoID: item.produtosID || item.id,
-          nome: item.nome || item.name,
-          Valor: item.preco || item.price || 0,
-          Quantidade: item.quantidade || item.quantity || 1,
-        })),
+        id: pedidoID,
+        alunoID: usuarioHigienizado.uid,
+        alunoNome: usuarioHigienizado.nome,
+        produtos: itensFormatadosParaOFirebase,
         status: "pendente",
         total,
-        data: new Date().toLocaleDateString("pt-BR").replace(/\//g, "-"),
-        hora: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+        data: dataFormatada,
+        hora: horaFormatada,
+        criadoEm: new Date()
       });
 
       setReservations((prev) => [novoPedido, ...prev]);
       return { success: true, reservation: novoPedido };
     } catch (error) {
-      console.error("Erro ao criar pedido:", error);
+      console.error("Erro ao criar pedido no contexto unificado:", error);
       return { success: false, message: "Erro ao processar pedido." };
     }
   };
 
-  // ── Atualizar status (admin / cancelamento de aluno) ────────────────────
+  // ── Atuais status ────────────────────────────────────────────────────
   const updateReservationStatus = async (pedidosID, novoStatus) => {
     try {
       await atualizarStatusPedido(pedidosID, novoStatus);
@@ -250,7 +299,7 @@ export const ProductProvider = ({ children }) => {
         updateProduct,
         deleteProduct,
         addReservation,
-        updateReservationStatus, // Fornece a função de alteração que MinhasReservas e Admin usam!
+        updateReservationStatus,
         isBeforeReservationDeadline,
       }}
     >

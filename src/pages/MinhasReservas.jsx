@@ -1,142 +1,122 @@
-import React, { useEffect, useState } from 'react';
-import { db } from '../firebase/config'; // Ajuste o caminho do seu firebase
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { useAuth } from '../context/AuthContext';
+import { useContext } from 'react';
+import { FaCheckCircle, FaTimesCircle, FaClock, FaShoppingBag, FaSpinner } from 'react-icons/fa';
+import { ProductContext } from '../context/ProductContext';
+import { AuthContext } from '../context/AuthContext';
+import Header from '../components/UI/Header';
+
+const statusLabels = {
+  pendente: 'Pendente',
+  preparando: 'Preparando',
+  pronto: 'Pronto para retirar',
+  entregue: 'Retirado',
+  cancelado: 'Cancelada',
+};
+
+const statusClasses = {
+  pendente: 'bg-amber-100 text-amber-800',
+  preparando: 'bg-blue-100 text-blue-800',
+  pronto: 'bg-emerald-100 text-emerald-800',
+  entregue: 'bg-slate-100 text-slate-700',
+  cancelado: 'bg-red-100 text-red-700',
+};
 
 export default function MinhasReservas() {
-  const { user } = useAuth();
-  const [reservas, setReservas] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [mensagem, setMensagem] = useState({ tipo: '', texto: '' });
+  const { reservations, loadingReservations, updateReservationStatus } = useContext(ProductContext);
+  const { user } = useContext(AuthContext);
 
-  useEffect(() => {
-    async function buscarReservas() {
-      if (!user?.uid) return;
-      try {
-        const q = query(collection(db, 'pedidos'), where('alunoID', '==', user.uid));
-        const querySnapshot = await getDocs(q);
-        const listaReservas = [];
-        querySnapshot.forEach((doc) => {
-          listaReservas.push({ id: doc.id, ...doc.data() });
-        });
-        // Ordena por criação mais recente
-        listaReservas.sort((a, b) => b.criadoEm?.seconds - a.criadoEm?.seconds);
-        setReservas(listaReservas);
-      } catch (error) {
-        console.error("Erro ao buscar pedidos:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    buscarReservas();
-  }, [user]);
-
-  // Validação da regra das 18h do dia anterior
-  const podeCancelar = (dataString) => {
-    try {
-      // dataString esperado: "dd-mm-yyyy"
-      const [dia, mes, ano] = dataString.split('-').map(Number);
-      const dataReserva = new Date(ano, mes - 1, dia);
-      
-      const agora = new Date();
-      const hoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
-
-      // Se o dia da reserva já passou ou é hoje, não pode mais cancelar por esta regra estrita
-      if (hoje >= dataReserva) {
-        return false;
-      }
-
-      // Se for o dia anterior à reserva, verifica se já passou das 18h
-      const limiteCancelamento = new Date(dataReserva);
-      limiteCancelamento.setDate(limiteCancelamento.getDate() - 1);
-      limiteCancelamento.setHours(18, 0, 0, 0);
-
-      return agora < limiteCancelamento;
-    } catch (e) {
-      return false;
+  const handleCancel = (id) => {
+    if (window.confirm('Tem certeza que deseja cancelar esta reserva?')) {
+      updateReservationStatus(id, 'cancelado');
     }
   };
-
-  const lidarComCancelamento = async (pedidoId, dataReserva) => {
-    if (!podeCancelar(dataReserva)) {
-      setMensagem({ tipo: 'erro', texto: 'Cancelamentos só são permitidos até as 18h do dia anterior à reserva.' });
-      return;
-    }
-
-    if (window.confirm("Tem certeza que deseja cancelar esta reserva?")) {
-      try {
-        const pedidoRef = doc(db, 'pedidos', pedidoId);
-        await updateDoc(pedidoRef, { status: 'cancelado' });
-        
-        setReservas(prev => prev.map(res => res.id === pedidoId ? { ...res, status: 'cancelado' } : res));
-        setMensagem({ tipo: 'sucesso', texto: 'Reserva cancelada com sucesso.' });
-      } catch (error) {
-        setMensagem({ tipo: 'erro', texto: 'Erro ao tentar cancelar a reserva. Tente novamente.' });
-      }
-    }
-  };
-
-  if (loading) return <div className="p-8 text-center">Carregando suas reservas...</div>;
 
   return (
-    <div className="max-w-4xl mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-6 text-emerald-800">Minhas Reservas</h1>
-      
-      {mensagem.texto && (
-        <div className={`p-4 mb-4 rounded-md ${mensagem.tipo === 'sucesso' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-          {mensagem.texto}
-        </div>
-      )}
+    <main className="min-h-screen bg-gray-50">
+      <Header title="Minhas Reservas" />
 
-      {reservas.length === 0 ? (
-        <p className="text-gray-600">Você ainda não realizou nenhum pedido de refeição.</p>
-      ) : (
-        <div className="space-y-4">
-          {reservas.map((reserva) => (
-            <div key={reserva.id} className="border border-gray-200 rounded-lg p-5 bg-white shadow-sm">
-              <div className="flex justify-between items-start border-b pb-3 mb-3">
-                <div>
-                  <p className="text-sm text-gray-500">Data de Entrega: <span className="font-semibold text-gray-700">{reserva.data} às {reserva.hora}</span></p>
-                  <p className="text-xs text-gray-400">ID do Pedido: {reserva.id}</p>
-                </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${
-                  reserva.status === 'pendente' ? 'bg-yellow-100 text-yellow-800' :
-                  reserva.status === 'preparando' ? 'bg-blue-100 text-blue-800' :
-                  reserva.status === 'pronto' ? 'bg-indigo-100 text-indigo-800' :
-                  reserva.status === 'entregue' ? 'bg-green-100 text-green-800' :
-                  'bg-gray-100 text-gray-800'
-                }`}>
-                  {reserva.status}
-                </span>
-              </div>
+      <div className="container-custom py-8">
+        {/* Cabeçalho com info do aluno */}
+        {user && (
+          <div className="mb-6 rounded-xl bg-white p-4 shadow-sm border border-gray-100">
+            <p className="text-sm text-gray-500">Reservas de</p>
+            <p className="font-bold text-gray-800">{user.nome}</p>
+            <p className="text-xs text-gray-400">{user.email} · Matrícula: {user.matriculaID || '—'}</p>
+          </div>
+        )}
 
-              <div className="mb-4">
-                <p className="font-medium text-gray-700 mb-2">Itens Solicitados:</p>
-                <ul className="list-disc pl-5 space-y-1 text-sm text-gray-600">
-                  {reserva.produtos?.map((prod, index) => (
-                    <li key={index}>
-                      {prod.nome} (x{prod.Quantidade}) - R$ {prod.Valor?.toFixed(2)}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="flex justify-between items-center pt-2">
-                <p className="text-lg font-bold text-emerald-700">Total: R$ {reserva.total?.toFixed(2)}</p>
-                
-                {reserva.status === 'pendente' && podeCancelar(reserva.data) && (
-                  <button
-                    onClick={() => lidarComCancelamento(reserva.id, reserva.data)}
-                    className="bg-red-500 hover:bg-red-600 text-white font-medium py-1.5 px-4 rounded transition-colors text-sm"
+        {/* Estado de loading */}
+        {loadingReservations ? (
+          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+            <FaSpinner className="animate-spin text-3xl mb-3 text-primary-500" />
+            <p className="text-sm">Buscando suas reservas...</p>
+          </div>
+        ) : reservations.length === 0 ? (
+          <div className="text-center py-20 text-gray-500">
+            <FaShoppingBag className="mx-auto text-4xl mb-4 opacity-50" />
+            <p className="font-medium">Você ainda não tem reservas.</p>
+            <p className="text-sm mt-1 text-gray-400">Faça um pedido no cardápio e ele aparecerá aqui.</p>
+          </div>
+        ) : (
+          <div className="grid gap-4">
+            {reservations.map((res) => (
+              <div
+                key={res.pedidosID || res.id}
+                className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm"
+              >
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h3 className="font-bold text-gray-900">
+                      Pedido #{(res.pedidosID || res.id)?.slice(-6) || '---'}
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      {res.data} às {res.hora}
+                    </p>
+                  </div>
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      statusClasses[res.status] || 'bg-gray-100 text-gray-600'
+                    }`}
                   >
-                    Cancelar Reserva
-                  </button>
-                )}
+                    {statusLabels[res.status] || res.status}
+                  </span>
+                </div>
+
+                {/* Produtos do pedido */}
+                <ul className="text-sm text-gray-600 mb-4 border-t pt-3 space-y-1">
+                  {res.produtos?.length > 0 ? (
+                    res.produtos.map((item, idx) => {
+                      const qtd = item.quantidade || item.Quantidade || 1;
+                      const preco = item.preco || item.Valor || 0;
+                      return (
+                        <li key={idx} className="flex justify-between">
+                          <span>{qtd}x {item.nome || item.name || 'Produto'}</span>
+                          <span>R$ {(preco * qtd).toFixed(2).replace('.', ',')}</span>
+                        </li>
+                      );
+                    })
+                  ) : (
+                    <li className="text-gray-400 text-xs">Sem detalhes de produtos.</li>
+                  )}
+                </ul>
+
+                <div className="flex justify-between items-center border-t pt-3 mt-1">
+                  <span className="font-bold text-gray-900">
+                    Total: R$ {Number(res.total).toFixed(2).replace('.', ',')}
+                  </span>
+                  {(res.status === 'pendente' || res.status === 'pending') && (
+                    <button
+                      onClick={() => handleCancel(res.pedidosID || res.id)}
+                      className="text-xs font-bold text-red-600 hover:text-red-800 underline"
+                    >
+                      Cancelar
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </main>
   );
 }

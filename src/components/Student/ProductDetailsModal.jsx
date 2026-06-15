@@ -16,10 +16,16 @@ export default function ProductDetailsModal({ product, isOpen, onClose, onAddToC
 
   if (!isOpen || !product) return null;
 
-  const total = product.price * quantity;
+  // Garante a leitura do preço correto para o cálculo do total do modal
+  const itemPreco = Number(product.preco ?? product.price ?? 0);
+  const total = itemPreco * quantity;
+  
+  const itemNome = product.nome || product.name || 'Produto';
+  const itemImagem = product.imagemUrl || product.image || '';
+  const itemDescricao = product.descricao || product.description || 'Sem descrição disponível.';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-3 sm:p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-3 sm:p-6\">\
       <button
         type="button"
         className="absolute inset-0 cursor-default"
@@ -34,25 +40,26 @@ export default function ProductDetailsModal({ product, isOpen, onClose, onAddToC
           className="absolute right-5 top-5 grid h-10 w-10 place-items-center rounded-full bg-gray-100 text-gray-600 transition hover:bg-gray-200"
           aria-label="Fechar"
         >
-          <FaTimes />
+          <FaTimes size={16} />
         </button>
 
-        <h2 className="pr-14 text-2xl font-extrabold text-gray-900 sm:text-[26px]">
-          {product.name}
-        </h2>
-
         <img
-          src={product.image}
-          alt={product.name}
-          className="mx-auto mt-4 h-56 w-full max-w-[300px] rounded-sm object-cover sm:h-[220px]"
+          src={itemImagem}
+          alt={itemNome}
+          className="h-56 w-full rounded-2xl object-cover sm:h-64"
         />
 
-        <p className="mt-5 text-sm leading-6 text-gray-600 sm:text-base">
-          <strong className="font-extrabold text-gray-700">Ingredientes:</strong>{' '}
-          {product.ingredients || product.description}
-        </p>
+        <div className="mt-5">
+          <h2 className="text-2xl font-extrabold text-gray-900">{itemNome}</h2>
+          <p className="mt-2 text-base font-extrabold text-primary-700">
+            R$ {itemPreco.toFixed(2).replace('.', ',')}
+          </p>
+          <p className="mt-3 text-sm font-semibold leading-relaxed text-gray-500">
+            {itemDescricao}
+          </p>
+        </div>
 
-        <div className="mt-7 flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="inline-flex h-11 w-fit items-center rounded-full bg-gray-50">
             <button
               type="button"

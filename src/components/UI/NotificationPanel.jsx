@@ -1,86 +1,130 @@
 import { useContext } from 'react';
+import { FaBell, FaCheck, FaTimes, FaTrash } from 'react-icons/fa';
 import { NotificationContext } from '../../context/NotificationContext';
-import { FaTrash, FaBell } from 'react-icons/fa';
-import { formatDistanceToNow } from 'date-fns';
-import ptBR from 'date-fns/locale/pt-BR';
 
 export default function NotificationPanel({ isOpen, onClose }) {
-  const { notifications, markAsRead, markAllAsRead, removeNotification } = useContext(NotificationContext);
+  const {
+    notifications,
+    unreadCount,
+    markAsRead,
+    markAllAsRead,
+    removeNotification,
+  } = useContext(NotificationContext);
 
   if (!isOpen) return null;
 
+  const formatTime = (isoString) => {
+    try {
+      const date = new Date(isoString);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+
+      if (diffMins < 1) return 'Agora mesmo';
+      if (diffMins < 60) return `Há ${diffMins} min`;
+      
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) return `Há ${diffHours} h`;
+      
+      return date.toLocaleDateString('pt-BR');
+    } catch {
+      return '';
+    }
+  };
+
+  // Voltando os estilos idênticos ao StudentAntigo original
+  const typeStyles = {
+    success: 'bg-emerald-50 border-emerald-500 text-emerald-800',
+    error: 'bg-red-50 border-red-500 text-red-800',
+    info: 'bg-blue-50 border-blue-500 text-blue-800',
+    warning: 'bg-amber-50 border-amber-500 text-amber-800',
+  };
+
   return (
     <>
-      <div
-        className="fixed inset-0 bg-black/50 z-50 animate-fadeIn"
-        onClick={onClose}
-      />
-      <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-50 transform transition-transform animate-slideIn">
-        <div className="flex items-center justify-between p-4 border-b">
-          <div className="flex items-center space-x-2">
-            <FaBell className="text-primary-500 text-xl" />
-            <h2 className="text-xl font-bold">Notificações</h2>
+      <div className="fixed inset-0 z-50 bg-black/40" onClick={onClose} />
+      <aside className="fixed bottom-0 right-0 top-0 z-50 flex w-full max-w-md flex-col bg-white shadow-2xl">
+        <div className="flex h-20 items-center justify-between border-b px-6">
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <FaBell className="text-gray-600" size={20} />
+              {unreadCount > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white ring-2 ring-white">
+                  {unreadCount}
+                </span>
+              )}
+            </div>
+            <h2 className="text-lg font-bold text-gray-900">Notificações</h2>
           </div>
-          <div className="flex space-x-2">
-            {notifications.length > 0 && (
-              <button
-                onClick={markAllAsRead}
-                className="text-sm text-primary-500 hover:text-primary-600"
-              >
-                Marcar todas como lidas
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="text-gray-500 hover:text-gray-700 text-2xl"
-            >
-              ×
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          >
+            <FaTimes size={18} />
+          </button>
         </div>
 
-        <div className="overflow-y-auto h-full pb-20">
+        {notifications.length > 0 && (
+          <div className="flex justify-end border-b bg-gray-50/50 px-6 py-2.5">
+            <button
+              type="button"
+              onClick={markAllAsRead}
+              className="text-xs font-semibold text-primary-600 hover:text-primary-700 hover:underline"
+            >
+              Marcar todas como lidas
+            </button>
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {notifications.length === 0 ? (
-            <div className="text-center py-12">
-              <FaBell className="text-6xl text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">Nenhuma notificação</p>
+            <div className="flex h-full flex-col items-center justify-center text-center text-gray-400">
+              <FaBell size={36} className="mb-3 opacity-20" />
+              <p className="text-sm font-medium">Nenhuma notificação por enquanto.</p>
             </div>
           ) : (
-            <div className="divide-y">
-              {notifications.map(notif => (
-                <div
-                  key={notif.id}
-                  className={`p-4 hover:bg-gray-50 transition-colors cursor-pointer ${!notif.read ? 'bg-primary-50' : ''}`}
-                  onClick={() => markAsRead(notif.id)}
+            notifications.map((notif) => (
+              <div
+                key={notif.id}
+                className={`relative rounded-xl border-l-4 p-4 shadow-sm transition-all ${
+                  typeStyles[notif.type] || typeStyles.info
+                } ${!notif.read ? 'bg-opacity-100 font-medium' : 'bg-opacity-60'}`}
+              >
+                <button
+                  type="button"
+                  onClick={() => removeNotification(notif.id)}
+                  className="absolute right-3 top-3 text-gray-400 hover:text-red-500 transition"
+                  title="Excluir"
                 >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <p className="text-gray-800">{notif.message}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {formatDistanceToNow(new Date(notif.timestamp), { addSuffix: true, locale: ptBR })}
-                      </p>
-                    </div>
-                    <div className="flex space-x-2 ml-4">
-                      {!notif.read && (
-                        <div className="w-2 h-2 bg-primary-500 rounded-full"></div>
-                      )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeNotification(notif.id);
-                        }}
-                        className="text-gray-400 hover:text-red-500"
-                      >
-                        <FaTrash size={12} />
-                      </button>
-                    </div>
-                  </div>
+                  <FaTrash size={12} />
+                </button>
+
+                <p className="text-sm leading-relaxed text-gray-800 pr-4">
+                  {notif.message || 'Nova atualização no seu pedido.'}
+                </p>
+
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="text-xs text-gray-400">
+                    {formatTime(notif.timestamp)}
+                  </span>
+                  
+                  {!notif.read && (
+                    <button
+                      type="button"
+                      onClick={() => markAsRead(notif.id)}
+                      className="flex items-center gap-1 text-xs font-bold text-primary-600 hover:text-primary-700 hover:underline"
+                    >
+                      <FaCheck size={10} />
+                      Marcar como lida
+                    </button>
+                  )}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))
           )}
         </div>
-      </div>
+      </aside>
     </>
   );
 }
