@@ -1,5 +1,5 @@
 import { useContext } from 'react';
-import { FaBell, FaCheck, FaTimes, FaTrash } from 'react-icons/fa';
+import { FaBell, FaCheck, FaTimes, FaTrash,FaInfoCircle,FaCheckCircle,FaExclamationTriangle,FaTimesCircle} from 'react-icons/fa';
 import { AuthContext } from '../../context/AuthContext';
 import { NotificationContext } from '../../context/NotificationContext';
 
@@ -36,12 +36,28 @@ export default function NotificationPanel({ isOpen, onClose }) {
   };
 
   // Voltando os estilos idênticos ao StudentAntigo original
-  const typeStyles = {
-    success: 'bg-emerald-50 border-emerald-500 text-emerald-800',
-    error: 'bg-red-50 border-red-500 text-red-800',
-    info: 'bg-blue-50 border-blue-500 text-blue-800',
-    warning: 'bg-amber-50 border-amber-500 text-amber-800',
-  };
+  const notificationConfig={
+    success:{
+icon:<FaCheckCircle className="text-green-600"/>,
+color:"border-green-500 bg-green-50"
+    },
+
+    error:{
+icon:<FaTimesCircle className="text-red-600"/>,
+color:"border-red-500 bg-red-50"
+    },
+
+    warning:{
+icon:<FaExclamationTriangle className="text-yellow-600"/>,
+color:"border-yellow-500 bg-yellow-50"
+    },
+
+    info:{
+icon:<FaInfoCircle className="text-blue-600"/>,
+color:"border-blue-500 bg-blue-50"
+    }
+
+};
 
   return (
     <>
@@ -99,16 +115,22 @@ export default function NotificationPanel({ isOpen, onClose }) {
           {notifications.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center text-gray-400">
               <FaBell size={36} className="mb-3 opacity-20" />
-              <p className="text-sm font-medium">Nenhuma notificação por enquanto.</p>
+              <p className="text-sm font-medium">Você ainda não possui notificações.</p>
+              <p className="text-sm font-medium">As atualizações da cantina aparecerão aqui.</p>
             </div>
           ) : (
             notifications.map((notif) => (
-              <div
-                key={notif.id}
-                className={`relative rounded-xl border-l-4 p-4 shadow-sm transition-all ${
-                  typeStyles[notif.type] || typeStyles.info
-                } ${!notif.read ? 'bg-opacity-100 font-medium' : 'bg-opacity-60'}`}
-              >
+                <div
+                  className={`
+                  mb-3
+                  rounded-2xl
+                  border-l-4
+                  shadow
+                  transition
+                  hover:shadow-lg
+                  ${notificationConfig[notif.type]?.color}
+                `}
+>
                 <button
                   type="button"
                   onClick={() => removeNotification(notif.id)}
@@ -118,8 +140,8 @@ export default function NotificationPanel({ isOpen, onClose }) {
                   <FaTrash size={12} />
                 </button>
 
-                <p className="text-sm leading-relaxed text-gray-800 pr-4">
-                  {notif.message || 'Nova atualização no seu pedido.'}
+                <p className="pr-4 text-[15px] leading-7 text-gray-700">
+                  {notif.message || "Nova atualização no seu pedido."}
                 </p>
 
                 <div className="mt-3 flex items-center justify-between">

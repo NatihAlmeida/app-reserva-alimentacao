@@ -88,7 +88,7 @@ export const NotificationProvider = ({ children }) => {
     }
 
     // A permissao nativa e solicitada apenas por acao do admin logado.
-    if (user?.role !== 'admin') return Notification.permission;
+    if (user?.perfil !== 'admin') return Notification.permission;
 
     const permission = await Notification.requestPermission();
     setBrowserNotificationStatus(permission);
@@ -122,7 +122,7 @@ export const NotificationProvider = ({ children }) => {
     const shouldPush =
       typeof Notification !== 'undefined' &&
       Notification.permission === 'granted' &&
-      (audience === user?.role || options.userId === user?.id);
+      (audience === user?.perfil || options.userId === user?.id);
 
     if (shouldPush) {
       new Notification('Cantina do Neném', {

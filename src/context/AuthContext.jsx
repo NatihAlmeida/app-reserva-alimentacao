@@ -6,6 +6,9 @@ import {
   signOut,
   onAuthStateChanged,
   sendPasswordResetEmail,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  updatePassword,
 } from "firebase/auth";
 import { auth } from "../firebase/config";
 import {
@@ -200,6 +203,47 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const changePassword = async (currentPassword, newPassword) => {
+  if (!auth.currentUser)
+    return {
+      success: false,
+      message: "Usuário não autenticado.",
+    };
+
+  try {
+    const credential = EmailAuthProvider.credential(
+      auth.currentUser.email,
+      currentPassword
+    );
+
+    await reauthenticateWithCredential(
+      auth.currentUser,
+      credential
+    );
+
+    await updatePassword(auth.currentUser, newPassword);
+
+    return {
+      success: true,
+      message: "Senha alterada com sucesso.",
+    };
+  } catch (error) {
+    const messages = {
+      "auth/wrong-password": "Senha atual incorreta.",
+      "auth/weak-password": "A nova senha deve possuir pelo menos 6 caracteres.",
+      "auth/requires-recent-login":
+        "Faça login novamente para alterar sua senha.",
+    };
+
+    return {
+      success: false,
+      message:
+        messages[error.code] ||
+        "Não foi possível alterar a senha.",
+    };
+  }
+};
+
   const logout = async () => {
     await signOut(auth);
     setUser(null);
@@ -263,6 +307,7 @@ export const AuthProvider = ({ children }) => {
     registerAbsence,
     unblockStudent,
     refreshStudents,
+    changePassword,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

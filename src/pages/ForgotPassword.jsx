@@ -22,13 +22,13 @@ export default function ForgotPassword() {
       return;
     }
 
-    const result = await requestPasswordReset(email);
+    const result = await requestPasswordReset(email.trim().toLowerCase());
 
     if (result.success) {
       setFeedback({
         type: "success",
         message:
-          "E-mail de recuperação enviado! Verifique sua caixa de entrada.",
+        "Enviamos um link para redefinição de senha. Caso não encontre, verifique o spam."
       });
     } else {
       setFeedback({ type: "error", message: result.message });
