@@ -1,13 +1,16 @@
 import { useContext } from 'react';
 import { FaBell, FaCheck, FaTimes, FaTrash } from 'react-icons/fa';
+import { AuthContext } from '../../context/AuthContext';
 import { NotificationContext } from '../../context/NotificationContext';
 
 export default function NotificationPanel({ isOpen, onClose }) {
+  const { user } = useContext(AuthContext);
   const {
     notifications,
     unreadCount,
+    browserNotificationStatus,
+    requestBrowserNotifications,
     markAsRead,
-    markAllAsRead,
     removeNotification,
   } = useContext(NotificationContext);
 
@@ -65,19 +68,34 @@ export default function NotificationPanel({ isOpen, onClose }) {
           </button>
         </div>
 
-        {notifications.length > 0 && (
-          <div className="flex justify-end border-b bg-gray-50/50 px-6 py-2.5">
-            <button
-              type="button"
-              onClick={markAllAsRead}
-              className="text-xs font-semibold text-primary-600 hover:text-primary-700 hover:underline"
-            >
-              Marcar todas como lidas
-            </button>
-          </div>
-        )}
+        <div className="overflow-y-auto h-full pb-20">
+          {user?.role === 'admin' && browserNotificationStatus !== 'granted' && (
+            <div className="m-4 rounded-xl border border-primary-100 bg-primary-50 p-4">
+              <p className="text-sm font-bold text-gray-900">Alertas em segundo plano</p>
+              <p className="mt-1 text-sm text-gray-600">
+                Receba avisos do navegador quando a aba da cantina nao estiver ativa.
+              </p>
+              {browserNotificationStatus === 'denied' ? (
+                <p className="mt-3 text-sm font-semibold text-red-600">
+                  Permissao bloqueada no navegador.
+                </p>
+              ) : browserNotificationStatus === 'unsupported' ? (
+                <p className="mt-3 text-sm font-semibold text-gray-600">
+                  Este navegador nao suporta alertas nativos.
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={requestBrowserNotifications}
+                  className="mt-3 btn-primary"
+                >
+                  <FaBell />
+                  Ativar alertas
+                </button>
+              )}
+            </div>
+          )}
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {notifications.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center text-gray-400">
               <FaBell size={36} className="mb-3 opacity-20" />

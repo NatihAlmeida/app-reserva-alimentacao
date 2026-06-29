@@ -6,6 +6,7 @@ import {
   FaChartLine,
   FaCheckCircle,
   FaClock,
+  FaPlus,
   FaSearch,
   FaStore,
   FaTimesCircle,
@@ -63,6 +64,7 @@ export default function AdminDashboard() {
   const [cancelModal, setCancelModal] = useState(null); // { reservation }
   const [cancelReason, setCancelReason] = useState('fora_escala');
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelError, setCancelError] = useState('');
 
   const students = getStudents ? getStudents() : [];
 
@@ -137,11 +139,13 @@ export default function AdminDashboard() {
   const openCancelModal = (reservation) => {
     setCancelModal({ reservation });
     setCancelReason('fora_escala');
+    setCancelError('');
   };
 
   const handleCancelReservation = async () => {
     if (!cancelModal) return;
     setCancelLoading(true);
+    setCancelError('');
     const { reservation } = cancelModal;
     const idPedido = reservation.pedidosID || reservation.id;
     const reasonLabel = CANCEL_REASONS.find((r) => r.value === cancelReason)?.label || cancelReason;
@@ -169,6 +173,11 @@ export default function AdminDashboard() {
       setCancelModal(null);
     } catch (err) {
       console.error('Erro ao cancelar pedido:', err);
+      const mensagem =
+        err?.code === 'permission-denied'
+          ? 'Permissão negada pelo Firestore. Verifique as regras de segurança da coleção "pedidos".'
+          : err?.message || 'Não foi possível cancelar o pedido. Tente novamente.';
+      setCancelError(mensagem);
     } finally {
       setCancelLoading(false);
     }
@@ -223,23 +232,31 @@ export default function AdminDashboard() {
           <StatsGrid stats={stats} />
 
           {activeTab === 'dashboard' && (
-            <section className="grid gap-5 xl:grid-cols-[1fr_0.7fr]">
-              <ReservationManager
-                reservations={paginatedReservations}
-                search={reservationSearch}
-                setSearch={setReservationSearch}
-                status={reservationStatus}
-                setStatus={setReservationStatus}
-                page={page}
-                setPage={setPage}
-                totalPages={totalPages}
-                onPickedUp={markPickedUp}
-                onNotPickedUp={markNotPickedUp}
-                onCancel={openCancelModal}
-                onStatusChange={updateReservationStatus}
+            <>
+              <DashboardOverview
+                stats={stats}
+                reservations={reservations}
+                students={students}
+                setActiveTab={setActiveTab}
               />
-              <StudentsPanel students={students} onUnblock={handleUnblock} onRefresh={refreshStudents} />
-            </section>
+              <section className="mt-5 grid gap-5 xl:grid-cols-[1fr_0.7fr]">
+                <ReservationManager
+                  reservations={paginatedReservations}
+                  search={reservationSearch}
+                  setSearch={setReservationSearch}
+                  status={reservationStatus}
+                  setStatus={setReservationStatus}
+                  page={page}
+                  setPage={setPage}
+                  totalPages={totalPages}
+                  onPickedUp={markPickedUp}
+                  onNotPickedUp={markNotPickedUp}
+                  onCancel={openCancelModal}
+                  onStatusChange={updateReservationStatus}
+                />
+                <StudentsPanel students={students} onUnblock={handleUnblock} onRefresh={refreshStudents} />
+              </section>
+            </>
           )}
 
           {activeTab === 'products' && <ProductList />}
@@ -292,6 +309,11 @@ export default function AdminDashboard() {
               ))}
             </div>
             <p className="mt-3 text-xs text-gray-400">O aluno receberá uma notificação com o motivo informado.</p>
+            {cancelError && (
+              <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700">
+                {cancelError}
+              </p>
+            )}
             <div className="mt-5 flex gap-3">
               <button
                 type="button"
@@ -319,7 +341,7 @@ export default function AdminDashboard() {
 
 function StatsGrid({ stats }) {
   return (
-    <div className="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
+    <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
       <StatCard label="Produtos Ativos" value={stats.activeProducts} icon={<FaStore />} />
       <StatCard label="Total Pedidos" value={stats.totalReservations} icon={<FaBox />} />
       <StatCard label="Em Aberto" value={stats.confirmedReservations} icon={<FaUsers />} />
@@ -332,17 +354,169 @@ function StatsGrid({ stats }) {
 
 function StatCard({ label, value, icon }) {
   return (
-    <article className="rounded-2xl bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-gray-500">{label}</p>
-          <p className="mt-2 text-2xl font-extrabold text-gray-900">{value}</p>
+    <article className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm transition hover:border-primary-100 hover:shadow-md">
+      <div className="flex min-h-16 items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-bold leading-snug text-gray-500">{label}</p>
+          <p className="mt-1 break-words text-2xl font-extrabold text-gray-900">{value}</p>
         </div>
-        <div className="grid h-11 w-11 place-items-center rounded-xl bg-primary-50 text-xl text-primary-600">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary-50 text-lg text-primary-700">
           {icon}
         </div>
       </div>
     </article>
+  );
+}
+
+function DashboardOverview({ stats, reservations, students, setActiveTab }) {
+  const statusSummary = Object.entries(statusLabels)
+    .map(([status, label]) => ({
+      status,
+      label,
+      total: reservations.filter((reservation) => reservation.status === status).length,
+    }))
+    .filter((item) => item.total > 0)
+    .sort((a, b) => b.total - a.total);
+  const nonActiveReservations = Math.max(0, stats.totalReservations - stats.confirmedReservations);
+  const blockedStudents = students.filter((student) => student.blocked).length;
+  const completedReservations = reservations.filter((item) => item.status === 'entregue').length;
+
+  return (
+    <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-extrabold text-gray-900">Resumo Operacional</h2>
+            <p className="text-sm text-gray-500">Visao rapida da movimentacao atual da cantina.</p>
+          </div>
+          <span className="w-fit rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-600">
+            Hoje
+          </span>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <OverviewMetric label="Reservas ativas" value={stats.confirmedReservations} tone="primary" />
+          <OverviewMetric label="Finalizadas" value={completedReservations} tone="success" />
+          <OverviewMetric label="Nao ativas" value={nonActiveReservations} />
+        </div>
+
+        <div className="mt-6">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-gray-500">Reservas por status</h3>
+          {statusSummary.length === 0 ? (
+            <p className="mt-3 rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+              Nenhuma reserva registrada.
+            </p>
+          ) : (
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              {statusSummary.map((item) => (
+                <div key={item.status} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className={`rounded-full px-3 py-1 text-xs font-bold ${statusClasses[item.status]}`}>
+                      {item.label}
+                    </span>
+                    <span className="text-lg font-extrabold text-gray-900">{item.total}</span>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+                    <div
+                      className="h-full rounded-full bg-primary-600"
+                      style={{ width: `${Math.max(8, (item.total / Math.max(1, stats.totalReservations)) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-1">
+        <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-extrabold text-gray-900">Atalhos</h2>
+            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-600">Rapido</span>
+          </div>
+          <div className="mt-4 grid gap-2">
+            <DashboardShortcut
+              icon={<FaBox />}
+              label="Ver reservas"
+              description="Acompanhar retiradas e status."
+              onClick={() => setActiveTab('reservations')}
+            />
+            <DashboardShortcut
+              icon={<FaUsers />}
+              label="Ver alunos"
+              description={`${students.length} aluno(s), ${blockedStudents} bloqueado(s).`}
+              onClick={() => setActiveTab('students')}
+            />
+            <DashboardShortcut
+              icon={<FaPlus />}
+              label="Novo produto"
+              description="Cadastrar item no cardapio."
+              onClick={() => setActiveTab('newProduct')}
+            />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+          <h2 className="text-lg font-extrabold text-gray-900">Saude da operacao</h2>
+          <div className="mt-4 space-y-2">
+            <HealthRow label="Produtos disponiveis" value={stats.activeProducts} />
+            <HealthRow label="Retiradas pendentes" value={stats.pendingPickups} />
+            <HealthRow label="Alunos bloqueados" value={stats.blockedStudents} tone={stats.blockedStudents > 0 ? 'warning' : 'success'} />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function OverviewMetric({ label, value, tone = 'default' }) {
+  const toneClass =
+    tone === 'primary'
+      ? 'bg-primary-50 text-primary-800'
+      : tone === 'success'
+        ? 'bg-emerald-50 text-emerald-800'
+        : 'bg-gray-50 text-gray-800';
+
+  return (
+    <div className={`rounded-lg p-3 ${toneClass}`}>
+      <p className="text-sm font-bold opacity-80">{label}</p>
+      <p className="mt-1 text-2xl font-extrabold">{value}</p>
+    </div>
+  );
+}
+
+function DashboardShortcut({ icon, label, description, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex w-full items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 p-3 text-left transition hover:border-primary-100 hover:bg-primary-50"
+    >
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-primary-700 shadow-sm transition group-hover:bg-primary-700 group-hover:text-white">
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block font-extrabold text-gray-900">{label}</span>
+        <span className="block text-sm leading-snug text-gray-500">{description}</span>
+      </span>
+    </button>
+  );
+}
+
+function HealthRow({ label, value, tone = 'default' }) {
+  const toneClass =
+    tone === 'warning'
+      ? 'bg-orange-100 text-orange-800'
+      : tone === 'success'
+        ? 'bg-emerald-100 text-emerald-800'
+        : 'bg-gray-100 text-gray-700';
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
+      <span className="text-sm font-bold text-gray-600">{label}</span>
+      <span className={`rounded-full px-3 py-1 text-sm font-extrabold ${toneClass}`}>{value}</span>
+    </div>
   );
 }
 

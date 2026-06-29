@@ -17,6 +17,14 @@ const getStoredNotifications = () => {
 export const NotificationProvider = ({ children }) => {
   const { user } = useContext(AuthContext);
   const [notifications, setNotifications] = useState(getStoredNotifications);
+  const [browserNotificationStatus, setBrowserNotificationStatus] = useState(() => {
+    if (typeof Notification === 'undefined') return 'unsupported';
+    return Notification.permission;
+  });
+  const [isTabActive, setIsTabActive] = useState(() => {
+    if (typeof document === 'undefined') return true;
+    return document.visibilityState === 'visible' && document.hasFocus();
+  });
 
   const visibleNotifications = useMemo(() => {
     if (!user) return [];
@@ -57,14 +65,35 @@ export const NotificationProvider = ({ children }) => {
   }, [notifications]);
 
   useEffect(() => {
-    if (
-      typeof Notification !== 'undefined' &&
-      Notification.permission !== 'granted' &&
-      Notification.permission !== 'denied'
-    ) {
-      Notification.requestPermission();
-    }
+    const updateTabActivity = () => {
+      setIsTabActive(document.visibilityState === 'visible' && document.hasFocus());
+    };
+
+    updateTabActivity();
+    document.addEventListener('visibilitychange', updateTabActivity);
+    window.addEventListener('focus', updateTabActivity);
+    window.addEventListener('blur', updateTabActivity);
+
+    return () => {
+      document.removeEventListener('visibilitychange', updateTabActivity);
+      window.removeEventListener('focus', updateTabActivity);
+      window.removeEventListener('blur', updateTabActivity);
+    };
   }, []);
+
+  const requestBrowserNotifications = async () => {
+    if (typeof Notification === 'undefined') {
+      setBrowserNotificationStatus('unsupported');
+      return 'unsupported';
+    }
+
+    // A permissao nativa e solicitada apenas por acao do admin logado.
+    if (user?.role !== 'admin') return Notification.permission;
+
+    const permission = await Notification.requestPermission();
+    setBrowserNotificationStatus(permission);
+    return permission;
+  };
 
   /**
    * addNotification
@@ -90,17 +119,12 @@ export const NotificationProvider = ({ children }) => {
 
     setNotifications((prev) => [newNotification, ...prev]);
 
-    // Push notification apenas se for para o usuário atual
-    const userRole = (user?.perfil || user?.role || 'student').toLowerCase();
-    const notifAudience = audience.toLowerCase();
-    const isForMe =
-      (options.userId && options.userId === userId) ||
-      (notifAudience === 'admin' && userRole === 'admin' && (!options.adminId || options.adminId === userId)) ||
-      ((notifAudience === 'student' || notifAudience === 'aluno') &&
-        (userRole === 'student' || userRole === 'aluno') &&
-        !options.userId);
+    const shouldPush =
+      typeof Notification !== 'undefined' &&
+      Notification.permission === 'granted' &&
+      (audience === user?.role || options.userId === user?.id);
 
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && isForMe) {
+    if (shouldPush) {
       new Notification('Cantina do Neném', {
         body: message,
         icon: '/favicon.svg',
@@ -133,6 +157,8 @@ export const NotificationProvider = ({ children }) => {
       value={{
         notifications: visibleNotifications,
         unreadCount,
+        browserNotificationStatus,
+        requestBrowserNotifications,
         addNotification,
         markAsRead,
         markAllAsRead,
