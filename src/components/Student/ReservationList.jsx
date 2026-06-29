@@ -42,7 +42,10 @@ export default function ReservationList() {
                   <div key={res.id} className="bg-gray-50 rounded-xl p-3">
                     <div className="flex justify-between items-start">
                       <div>
-                        <p className="font-semibold">{res.productName}</p>
+                        <div>
+                          <p className="font-semibold">{res.productName}</p>
+                            <span className="mt-1 inline-flex rounded-full bg-primary-100 px-2 py-1 text-xs font-bold text-primary-700"> Pedido #{res.pedidosID || res.id}</span>
+                        </div>
                         <div className="flex items-center space-x-2 text-sm text-gray-500 mt-1">
                           <FaClock size={12} />
                           <span>{res.time}</span>
