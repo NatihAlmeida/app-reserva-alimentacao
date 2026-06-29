@@ -11,8 +11,11 @@ import {
 import { AuthContext } from '../context/AuthContext';
 import Header from '../components/UI/Header';
 
-export default function Settings() {
+
+export default function Settings({ isAdmin = false }) {
+  console.log("isAdmin:", isAdmin);
   const { user, updateProfile, changePassword } = useContext(AuthContext);
+  isAdmin = user?.role === "admin" || user?.perfil === "admin";
   const [profileForm, setProfileForm] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -73,9 +76,8 @@ export default function Settings() {
 
   return (
     <>
-      <Header title="Configurações" />
-
-      <main className="container-custom py-6 sm:py-8">
+      {!isAdmin && <Header title="Configurações" />}
+      <main className={isAdmin ? "py-6 sm:py-8" : "container-custom py-6 sm:py-8"}>
         <section className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[0.9fr_1.1fr]">
           <aside className="overflow-hidden rounded-[24px] bg-white shadow-xl">
             <div className="bg-primary-600 p-6 text-white sm:p-8">
@@ -86,21 +88,29 @@ export default function Settings() {
                   className="h-16 w-16"
                 />
                 <div>
-                  <h1 className="text-2xl font-extrabold">Perfil do Usuário</h1>
-                  <p className="mt-1 text-sm text-emerald-50">Gerencie suas informações</p>
+                  <h1 className="text-2xl font-extrabold">
+                    {isAdmin ? "Perfil do Administrador" : "Perfil do Usuário"}
+                  </h1>
+                  <p className="mt-1 text-sm text-emerald-50">
+                    {isAdmin ? "Gerencie sua conta administrativa" : "Gerencie suas informações"}</p>
                 </div>
               </div>
             </div>
 
             <div className="space-y-4 p-5 sm:p-8">
-              <InfoCard icon={<FaUserCircle />} label="Nome" value={user?.name || 'Estudante'} />
-              <InfoCard icon={<FaIdCard />} label="E-mail" value={user?.email || 'estudante@escola.com'} />
+              <InfoCard icon={<FaUserCircle />} label="Nome" value={user?.name || 'Usuário'} />
+              <InfoCard icon={<FaIdCard />} label="E-mail" value={user?.email || '-'} />
               <InfoCard
                 icon={<FaAward />}
                 label="Tipo de Acesso"
-                value={user?.role === 'admin' ? 'Administrador' : 'Aluno'}
-                pill
-              />
+                  value={
+                    user?.perfil === 'admin'
+                    ? 'Administrador'
+                    : user?.perfil === 'aluno'
+                    ? 'Aluno'
+                    : user?.perfil || 'Usuário'
+                  }
+                pill/>
             </div>
           </aside>
 

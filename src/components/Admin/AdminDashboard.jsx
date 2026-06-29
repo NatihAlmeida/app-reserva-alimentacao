@@ -22,6 +22,7 @@ import Sidebar, { AdminMobileNav } from './Sidebar';
 import ProductForm from './ProductForm';
 import ProductList from './ProductList';
 import { cancelarPedido } from '../../firebase/pedidos';
+import Settings from "../../pages/Settings";
 
 const CANCEL_REASONS = [
   { value: 'fora_escala', label: 'Fora da escala de horário' },
@@ -282,6 +283,7 @@ export default function AdminDashboard() {
           )}
           {activeTab === 'notifications' && <AdminNotifications notifications={notifications} />}
           {activeTab === 'reports' && <Reports stats={stats} />}
+          {activeTab === 'settings' && <Settings/>}
         </main>
       </div>
 
@@ -811,4 +813,8 @@ function Avatar({ name, blocked = false }) {
       {(name || 'A').slice(0, 1).toUpperCase()}
     </div>
   );
+}
+
+function AdminSettings() {
+  return <Settings/>;
 }
