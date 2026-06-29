@@ -283,7 +283,7 @@ export default function AdminDashboard() {
           )}
           {activeTab === 'notifications' && <AdminNotifications notifications={notifications} />}
           {activeTab === 'reports' && <Reports stats={stats} />}
-          {activeTab === 'settings' && <Settings/>}
+          {activeTab === 'settings' && <Settings isAdmin/>}
         </main>
       </div>
 
@@ -816,5 +816,5 @@ function Avatar({ name, blocked = false }) {
 }
 
 function AdminSettings() {
-  return <Settings/>;
+  return <Settings isAdmin={true} />;
 }
